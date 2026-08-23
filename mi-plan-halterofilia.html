@@ -4,27 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Mi Plan · Halterofilia</title>
-<link rel="apple-touch-icon" href="/app/static/apple-touch-icon.png">
-<script>
-  // Cuando esta app corre embebida (por ejemplo dentro de Streamlit), el
-  // icono de "Añadir a pantalla de inicio" de iOS lo busca en la página
-  // que contiene el iframe, no aquí dentro. Si estamos en el mismo origen
-  // que esa página padre, le inyectamos el link del icono.
-  (function(){
-    try{
-      if (window.parent && window.parent !== window && window.parent.document){
-        var href = '/app/static/apple-touch-icon.png';
-        var link = window.parent.document.querySelector('link[rel="apple-touch-icon"]');
-        if (!link){
-          link = window.parent.document.createElement('link');
-          link.setAttribute('rel','apple-touch-icon');
-          window.parent.document.head.appendChild(link);
-        }
-        link.setAttribute('href', href);
-      }
-    }catch(e){ /* distinto origen o no estamos en un iframe: no pasa nada */ }
-  })();
-</script>
+<link rel="apple-touch-icon" href="static/apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
