@@ -1,0 +1,3991 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Mi Plan · Halterofilia</title>
+<link rel="apple-touch-icon" href="/app/static/apple-touch-icon.png">
+<script>
+  // Cuando esta app corre embebida (por ejemplo dentro de Streamlit), el
+  // icono de "Añadir a pantalla de inicio" de iOS lo busca en la página
+  // que contiene el iframe, no aquí dentro. Si estamos en el mismo origen
+  // que esa página padre, le inyectamos el link del icono.
+  (function(){
+    try{
+      if (window.parent && window.parent !== window && window.parent.document){
+        var href = '/app/static/apple-touch-icon.png';
+        var link = window.parent.document.querySelector('link[rel="apple-touch-icon"]');
+        if (!link){
+          link = window.parent.document.createElement('link');
+          link.setAttribute('rel','apple-touch-icon');
+          window.parent.document.head.appendChild(link);
+        }
+        link.setAttribute('href', href);
+      }
+    }catch(e){ /* distinto origen o no estamos en un iframe: no pasa nada */ }
+  })();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root{
+  --bg:#f5f5f2;
+  --surface:#ffffff;
+  --surface-2:#eef0f4;
+  --surface-3:#c9d3de;
+  --chalk:#20242e;
+  --muted:#57616e;
+  --muted-2:#7d8794;
+  --red:#c14a3a;
+  --blue:#3f6f9f;
+  --yellow:#f4dd8a;
+  --yellow-deep:#c99a2e;
+  --ok:#2f7dc4;
+  --purple:#7d6bb0;
+  --rest:#ab9c86;
+  --border:#dfe3e8;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--chalk);
+  font-family:'Inter',sans-serif;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+.app{max-width:640px;margin:0 auto;padding:0 0 60px;}
+
+/* ---------- Upload screen ---------- */
+.upload-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px 20px;
+  text-align:center;
+}
+.upload-mark{
+  width:72px;height:72px;border-radius:50%;
+  background:radial-gradient(circle at 32% 28%, #eef1f6, var(--surface) 70%);
+  border:3px solid var(--surface-3);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:22px;
+  position:relative;
+}
+.upload-mark::before{
+  content:"";
+  width:26px;height:26px;
+  border:3px solid var(--yellow);
+  border-radius:50%;
+  border-right-color:transparent;
+  border-bottom-color:transparent;
+  transform:rotate(45deg);
+}
+h1.brand{
+  font-family:'Oswald',sans-serif;
+  font-weight:700;
+  font-size:28px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  margin:0 0 6px;
+}
+p.tagline{
+  color:var(--muted);
+  font-size:14px;
+  margin:0 0 34px;
+  max-width:320px;
+  line-height:1.5;
+}
+.dropzone{
+  width:100%;
+  max-width:340px;
+  border:2px dashed var(--surface-3);
+  border-radius:16px;
+  padding:30px 20px;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease;
+  background:var(--surface);
+}
+.dropzone:hover, .dropzone.drag{
+  border-color:var(--yellow);
+  background:var(--surface-2);
+}
+.dropzone .dz-title{
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:16px;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  margin-bottom:6px;
+}
+.dropzone .dz-sub{color:var(--muted-2);font-size:12.5px;}
+input[type=file]{display:none;}
+.upload-error{
+  margin-top:18px;
+  color:var(--red);
+  font-size:13px;
+  max-width:340px;
+  line-height:1.5;
+}
+.history-pick{
+  margin-top:28px;
+  font-size:13px;
+  color:var(--muted);
+}
+.history-pick button{
+  background:none;border:none;color:var(--yellow-deep);
+  font-size:13px;font-family:'Inter',sans-serif;font-weight:600;
+  cursor:pointer;text-decoration:underline;padding:0;
+}
+
+/* ---------- Header ---------- */
+.topbar{
+  padding:22px 20px 16px;
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;
+  background:rgba(246,249,239,0.94);
+  backdrop-filter:blur(6px);
+  z-index:20;
+}
+.topbar-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.athlete-name{
+  font-family:'Oswald',sans-serif;
+  font-weight:700;
+  font-size:22px;
+  text-transform:uppercase;
+  letter-spacing:.01em;
+  line-height:1.1;
+}
+.meta-line{
+  color:var(--muted);
+  font-size:12.5px;
+  margin-top:4px;
+  font-family:'IBM Plex Mono',monospace;
+}
+.week-chip{
+  background:var(--yellow);
+  color:#26330f;
+  font-family:'Oswald',sans-serif;
+  font-weight:700;
+  font-size:12.5px;
+  padding:5px 10px;
+  border-radius:20px;
+  white-space:nowrap;
+  text-transform:uppercase;
+}
+.topbar-actions{
+  display:flex;gap:10px;margin-top:12px;
+}
+.tb-btn{
+  background:none;border:1px solid var(--surface-3);color:var(--muted);
+  font-size:11.5px;font-family:'Inter',sans-serif;font-weight:600;
+  padding:6px 11px;border-radius:8px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:.03em;
+}
+.tb-btn:hover{border-color:var(--muted);color:var(--chalk);}
+
+/* ---------- Day plate selector ---------- */
+.plate-row{
+  display:flex;
+  gap:14px;
+  padding:20px 20px 6px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.plate-row::-webkit-scrollbar{display:none;}
+.plate-wrap{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  flex-shrink:0;cursor:pointer;
+  background:none;border:none;color:inherit;
+  font-family:inherit;
+}
+.plate{
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Oswald',sans-serif;
+  font-weight:700;
+  position:relative;
+  transition:transform .15s ease;
+}
+.plate-wrap:active .plate{transform:scale(0.94);}
+.plate-wrap.active .plate{
+  box-shadow:0 0 0 3px var(--bg), 0 0 0 5px var(--chalk);
+}
+.plate-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+.plate-wrap.active .plate-label{color:var(--chalk);font-weight:700;}
+.plate-progress{
+  position:absolute;inset:-4px;
+  border-radius:50%;
+}
+
+/* ---------- Day content ---------- */
+.day-section{padding:8px 20px 0;}
+.day-heading{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin:20px 0 14px;
+}
+.day-heading h2{
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:19px;
+  text-transform:uppercase;
+  margin:0;
+  letter-spacing:.01em;
+}
+.day-count{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;color:var(--muted-2);
+}
+
+.note-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:4px solid var(--rest);
+  border-radius:12px;
+  padding:18px 16px;
+  margin-bottom:12px;
+  font-family:'Oswald',sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  font-size:14px;
+  color:var(--muted);
+  text-align:center;
+}
+.note-card.competition{
+  border-left-color:var(--red);
+  color:var(--chalk);
+  background:linear-gradient(135deg, rgba(193,74,58,0.12), var(--surface));
+  font-weight:600;
+}
+
+.empty-day{
+  color:var(--muted-2);
+  font-size:13px;
+  text-align:center;
+  padding:30px 0 10px;
+  font-style:italic;
+}
+
+.ex-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:14px 14px 12px;
+  margin-bottom:12px;
+}
+.ex-top{
+  display:flex;align-items:flex-start;gap:10px;
+}
+.ex-code{
+  flex-shrink:0;
+  width:34px;height:34px;border-radius:50%;
+  background:var(--surface-2);
+  border:1.5px solid var(--surface-3);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;
+  font-weight:600;font-size:12.5px;color:var(--muted);
+}
+.ex-info{flex:1;min-width:0;}
+.ex-name{
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:15.5px;
+  text-transform:uppercase;
+  letter-spacing:.01em;
+  line-height:1.25;
+}
+.ex-name.unknown{color:var(--yellow-deep);}
+.ex-sub{font-size:11px;color:var(--muted-2);margin-top:2px;text-transform:uppercase;letter-spacing:.03em;}
+
+.set-chips{
+  display:flex;flex-wrap:wrap;gap:7px;
+  margin:12px 0 12px 44px;
+}
+.chip{
+  background:var(--surface-2);
+  border:1px solid var(--surface-3);
+  border-radius:8px;
+  padding:6px 9px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12.5px;
+  color:var(--chalk);
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .12s ease, border-color .12s ease, color .12s ease;
+}
+.chip b{color:var(--yellow-deep);font-weight:600;}
+.chip.chip-ok{background:var(--ok);border-color:var(--ok);color:#0e1a0e;}
+.chip.chip-ok b{color:#0e1a0e;}
+.chip.chip-bad{background:var(--red);border-color:var(--red);color:#2a0e07;}
+.chip.chip-bad b{color:#2a0e07;}
+
+.ex-hint{
+  margin:2px 0 0 44px;
+  font-size:10.5px;
+  color:var(--muted-2);
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+.ex-card{cursor:pointer;}
+
+.ex-actions{
+  display:flex;gap:8px;margin-left:44px;
+}
+.mark-btn{
+  flex:1;
+  border-radius:9px;
+  border:1.5px solid var(--surface-3);
+  background:var(--surface-2);
+  color:var(--muted);
+  padding:9px 0;
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:13px;
+  cursor:pointer;
+  letter-spacing:.02em;
+  transition:all .12s ease;
+}
+.mark-btn.ok.selected{background:var(--ok);border-color:var(--ok);color:#0e1a0e;}
+.mark-btn.bad.selected{background:var(--red);border-color:var(--red);color:#2a0e07;}
+
+/* ---------- Flashcard overlay ---------- */
+.fc-overlay{ padding:0; }
+.fc-wrap{
+  width:100%;max-width:440px;
+  display:flex;flex-direction:column;
+  height:min(680px, 94vh);
+  background:var(--surface);
+  border-radius:20px;
+  overflow:hidden;
+  border:1px solid var(--surface-3);
+}
+.fc-top{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:18px 18px 10px;
+  border-bottom:1px solid var(--border);
+}
+.fc-name{
+  font-family:'Oswald',sans-serif;font-weight:700;font-size:20px;
+  text-transform:uppercase;letter-spacing:.01em;
+}
+.fc-progress{
+  font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--muted-2);margin-top:3px;
+}
+.fc-close{
+  background:none;border:1px solid var(--surface-3);color:var(--muted);
+  width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;flex-shrink:0;
+}
+.fc-card-area{
+  flex:1;display:flex;align-items:center;justify-content:center;padding:20px;
+  touch-action:pan-y;
+  position:relative;
+  overflow:hidden;
+  perspective:900px;
+}
+@keyframes fcPopIn{
+  from{ opacity:0; transform:scale(.93); }
+  to{ opacity:1; transform:scale(1); }
+}
+@keyframes fcSlideInNext{
+  0%{ opacity:0; transform:translateX(120px) translateY(20px) rotate(13deg) scale(.9); }
+  55%{ opacity:1; transform:translateX(-9px) translateY(-5px) rotate(-2deg) scale(1.02); }
+  80%{ transform:translateX(3px) translateY(1px) rotate(.6deg) scale(.995); }
+  100%{ opacity:1; transform:translateX(0) translateY(0) rotate(0deg) scale(1); }
+}
+@keyframes fcSlideInPrev{
+  0%{ opacity:0; transform:translateX(-120px) translateY(20px) rotate(-13deg) scale(.9); }
+  55%{ opacity:1; transform:translateX(9px) translateY(-5px) rotate(2deg) scale(1.02); }
+  80%{ transform:translateX(-3px) translateY(1px) rotate(-.6deg) scale(.995); }
+  100%{ opacity:1; transform:translateX(0) translateY(0) rotate(0deg) scale(1); }
+}
+.fc-card{
+  width:100%;
+  display:flex;flex-direction:column;align-items:center;gap:22px;
+  padding:30px 20px;
+  animation:fcPopIn .3s cubic-bezier(.22,.85,.32,1) both;
+  will-change:transform,opacity;
+}
+.fc-card.dir-next{ animation:fcSlideInNext .4s cubic-bezier(.25,.8,.3,1) both; }
+.fc-card.dir-prev{ animation:fcSlideInPrev .4s cubic-bezier(.25,.8,.3,1) both; }
+.fc-mark:active, .mark-btn:active{ transform:scale(.96); }
+.fc-nav-btn:active{ transform:scale(.88); }
+.fc-memo-textarea{
+  width:100%; margin-top:14px;
+  background:var(--surface-2); border:1.5px solid var(--surface-3); border-radius:12px;
+  color:var(--chalk); font-family:'Inter',sans-serif; font-size:16px; line-height:1.45;
+  padding:14px; resize:vertical;
+}
+.fc-kg{
+  font-family:'Oswald',sans-serif;font-weight:700;font-size:clamp(64px,17vw,88px);color:var(--yellow-deep);
+  line-height:1;
+}
+.fc-setrep{
+  font-family:'IBM Plex Mono',monospace;font-size:clamp(30px,8.5vw,42px);color:var(--chalk);
+  font-weight:700;
+  text-transform:uppercase;letter-spacing:.02em;
+}
+.fc-mark-row{ display:flex; gap:14px; width:100%; margin-top:12px; }
+.fc-mark{
+  flex:1;padding:22px 0;border-radius:14px;
+  border:2px solid var(--surface-3);background:var(--surface-2);color:var(--muted);
+  font-family:'Oswald',sans-serif;font-weight:700;font-size:24px;letter-spacing:.02em;
+  cursor:pointer;transition:all .12s ease;
+}
+.fc-mark.ok.selected{background:var(--ok);border-color:var(--ok);color:#0e1a0e;}
+.fc-mark.bad.selected{background:var(--red);border-color:var(--red);color:#fff8f0;}
+
+.fc-final{ text-align:center; }
+.fc-final-title{
+  font-family:'Oswald',sans-serif;font-weight:700;font-size:34px;text-transform:uppercase;
+}
+.fc-final-sub{ color:var(--muted); font-size:24px; margin-top:10px; font-weight:600; line-height:1.35; }
+.fc-final-actions{ display:flex; gap:12px; width:100%; margin-top:24px; }
+.fc-final-actions .mark-btn{
+  font-size:22px; padding:22px 0; border-radius:14px; border-width:2px;
+}
+
+.fc-newweight-form{ display:flex; gap:12px; margin-top:20px; justify-content:center; }
+.fc-field{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+.fc-field-label{ font-size:14px; color:var(--muted-2); text-transform:uppercase; letter-spacing:.03em; font-weight:600; }
+.fc-field-input{
+  background:var(--surface-2);border:1.5px solid var(--surface-3);border-radius:10px;
+  color:var(--chalk);font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;
+  padding:12px 8px;text-align:center;
+}
+
+.fc-nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px 20px;border-top:1px solid var(--border);
+}
+.fc-nav-btn{
+  background:var(--surface-2);border:1px solid var(--surface-3);color:var(--chalk);
+  width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer;
+}
+.fc-nav-btn:disabled{ opacity:.3; }
+.fc-dots{ display:flex; gap:6px; }
+.fc-dot{ width:6px;height:6px;border-radius:50%;background:var(--surface-3); }
+.fc-dot.active{ background:var(--yellow); width:16px;border-radius:3px; }
+
+/* ---------- Debug ---------- */
+.debug-toggle{
+  text-align:center;margin:26px 0 0;
+}
+.debug-toggle button{
+  background:none;border:none;color:var(--muted-2);
+  font-size:11.5px;text-decoration:underline;cursor:pointer;font-family:'Inter',sans-serif;
+}
+.debug-panel{
+  margin:12px 20px 0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px;
+  color:var(--muted);
+  max-height:300px;
+  overflow:auto;
+  white-space:pre-wrap;
+}
+
+/* ---------- History panel ---------- */
+.overlay{
+  position:fixed;inset:0;background:rgba(10,10,12,0.7);
+  display:flex;align-items:flex-end;justify-content:center;
+  z-index:50;
+}
+.sheet{
+  background:var(--surface);
+  width:100%;max-width:640px;
+  border-radius:20px 20px 0 0;
+  padding:22px 20px 30px;
+  max-height:70vh;overflow:auto;
+}
+.sheet h3{
+  font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:16px;margin:0 0 14px;
+}
+.hist-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 4px;border-bottom:1px solid var(--border);
+  cursor:pointer;
+}
+.hist-item:last-child{border-bottom:none;}
+.hist-item .hi-title{font-family:'Oswald',sans-serif;font-size:14px;text-transform:uppercase;}
+.hist-item .hi-sub{font-size:11px;color:var(--muted-2);font-family:'IBM Plex Mono',monospace;}
+.sheet-close{
+  display:block;margin:16px auto 0;
+  background:none;border:1px solid var(--surface-3);color:var(--muted);
+  padding:9px 20px;border-radius:9px;font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;
+  cursor:pointer;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+/* ============== EXERCISE DICTIONARY (Comité Nacional de Entrenadores, RFEH) ============== */
+const DICT = {
+  1:"Arrancada", 2:"Arr. encima de la rodilla", 3:"Arr. debajo de la rodilla",
+  4:"Arr. de la mitad del muslo", 5:"Arr. de tres posiciones", 6:"Arr. de tacos altos",
+  7:"Arr. de tacos bajos", 8:"Arr. sin desplazamiento", 9:"Arr. lenta",
+  10:"Dos tiempos", 11:"Cargada de dos tiempos", 12:"Cargada col. encima de la rodilla",
+  13:"Cargada col. debajo de la rodilla", 14:"Cargada de mitad del muslo",
+  15:"Cargada de tres posiciones", 16:"Cargada de tacos altos", 17:"Cargada de tacos bajos",
+  18:"Jerk", 19:"Jerk detrás", 20:"Arrancada de fuerza",
+  21:"Arr. de fuerza enc. de la rodilla", 22:"Arr. de fuerza deb. de la rodilla",
+  23:"Arr. de fuerza de tacos bajos", 24:"Arr. de fuerza de tacos altos",
+  25:"Arr. de fuerza sin flexión", 26:"Arr. de fuerza pies juntos",
+  27:"Arr. de fuerza sin impulso", 28:"Arr. de fuerza sin desplazamiento",
+  29:"Push jerk", 30:"Push jerk detrás", 31:"Push press", 32:"Push press detrás",
+  33:"Cargada de fuerza", 34:"Cargada de fza. deb. de la rodilla",
+  35:"Cargada de fza. enc. de la rodilla", 36:"Cargada de fza. tacos bajos",
+  37:"Cargada fza. tacos altos", 38:"Cargada de fuerza + jerk",
+  39:"Cargada de fuerza + push jerk", 40:"Tirón de arrancada técnico",
+  41:"Tirón de arrancada colgante", 42:"Tirón de arrancada lento",
+  43:"Tirón de arrancada tacos altos", 44:"Tirón de arrancada tacos bajos",
+  45:"Tirón de arrancada final", 46:"Tirón de arr. tacos final",
+  47:"Tirón de dos tiempos lento", 48:"Tirón de dos tiempos técnico",
+  49:"Tirón de dos tiempos colgante", 50:"Sentadilla detrás", 51:"Sentadilla delante",
+  52:"Sentadilla delante + jerk", 53:"Sentadilla de arrancada", 54:"Piernas en split delante",
+  55:"Piernas en split detrás", 56:"Media sentadilla por detrás", 57:"Media sentadilla por delante"
+};
+
+const DAY_NAMES = { L:'Lunes', M:'Martes', X:'Miércoles', J:'Jueves', V:'Viernes', S:'Sábado', D:'Domingo' };
+const DAY_ORDER = ['L','M','X','J','V','S','D'];
+const REST_WORDS = ['REST','DESCANSO'];
+
+if (window.pdfjsLib){
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js';
+}
+
+/* ============== PARSER ============== */
+function norm(v){ if (v === null || v === undefined) return ''; return String(v).trim(); }
+
+// Reconoce celdas de código de ejercicio, incluyendo combos con aclaraciones
+// de texto libre: "51", "51 con parada +51", "3+21"... Cada trozo separado
+// por "+" empieza por un código y puede llevar detrás una aclaración libre
+// ("con parada", "lento", etc.). Devuelve un array de partes
+// [{code, modifier}] o null si la celda no tiene pinta de código.
+function parseCodeCell(codeCell){
+  const raw = String(codeCell).trim();
+  if (!raw) return null;
+  const segments = raw.split('+').map(s=>s.trim()).filter(Boolean);
+  if (!segments.length) return null;
+  const parts = [];
+  for (const seg of segments){
+    const m = seg.match(/^(\d+)\s*(.*)$/);
+    if (!m) return null; // algún trozo no empieza por un número -> no es un código
+    parts.push({ code: parseInt(m[1],10), modifier: m[2].trim() || null });
+  }
+  return parts;
+}
+
+// Construye el nombre visible de un ejercicio (o combo) a partir de sus partes.
+function buildComboName(parts){
+  return parts.map(p=>{
+    const base = DICT[p.code] || ('Código ' + p.code);
+    return p.modifier ? (base + ' ' + p.modifier.toUpperCase()) : base;
+  }).join(' + ');
+}
+
+// Reconoce celdas de repeticiones simples ("5") o repartidas entre las partes
+// de un combo ("2+1" = 2 repes de la primera parte, 1 de la segunda).
+function parseRepsCell(v){
+  if (v === null || v === undefined) return { total:null, parts:null };
+  const raw = String(v).trim();
+  if (!raw) return { total:null, parts:null };
+  if (/^\d+([.,]\d+)?$/.test(raw)){
+    return { total: Number(raw.replace(',','.')), parts: null };
+  }
+  if (raw.includes('+')){
+    const bits = raw.split('+').map(s=>s.trim());
+    const nums = bits.map(b=> /^\d+([.,]\d+)?$/.test(b) ? Number(b.replace(',','.')) : null);
+    if (nums.some(n=>n===null)) return { total:null, parts:null };
+    return { total: nums.reduce((a,b)=>a+b,0), parts: nums };
+  }
+  return { total:null, parts:null };
+}
+
+function parseRows(rows){
+  let headerRowIdx = -1, codeColIdx = -1;
+  for (let r=0; r<rows.length; r++){
+    const row = rows[r] || [];
+    for (let c=0; c<row.length; c++){
+      const val = norm(row[c]).toUpperCase();
+      if (val === 'CODIGO' || val === 'CÓDIGO'){ headerRowIdx = r; codeColIdx = c; break; }
+    }
+    if (headerRowIdx !== -1) break;
+  }
+  if (headerRowIdx === -1) return { ok:false, error:'no-header', rows };
+
+  const header = rows[headerRowIdx] || [];
+  let toColIdx = -1;
+  for (let c=codeColIdx+1; c<header.length; c++){
+    const up = norm(header[c]).toUpperCase();
+    if (up === 'TO' || up.startsWith('TO ') || up.startsWith('TO\t')){ toColIdx = c; break; }
+  }
+  if (toColIdx === -1) toColIdx = header.length;
+
+  const dayColIdx = 0;
+  const refColIdx = codeColIdx + 1;
+  const groupStart = refColIdx + 1;
+  const numGroups = Math.max(0, Math.floor((toColIdx - groupStart) / 3));
+
+  let athlete = null, week = null, jornada = null;
+  const skipWords = ['PLAN','SEMANA','KG','MAXIMOS','MÁXIMOS','OBJETIVOS','COMPETICION','COMPETICIÓN','HISTORICO','HISTÓRICO','MEJORA','CODIGO','CÓDIGO','REF','ENTRENAMIENTO'];
+  for (let r=0; r<headerRowIdx; r++){
+    const row = rows[r] || [];
+    for (let c=0; c<row.length; c++){
+      const val = norm(row[c]);
+      const up = val.toUpperCase();
+      if (up === 'SEMANA'){
+        for (let cc=c+1; cc<row.length; cc++){
+          if (row[cc] !== null && norm(row[cc]) !== ''){ week = row[cc]; break; }
+        }
+      }
+      if (up.includes('JORNADA') || up.includes('ANDALUZ') || up.includes('LIGA') || up.includes('CAMPEONATO')){
+        if (!jornada || val.length > jornada.length) jornada = val;
+      }
+    }
+  }
+  for (let r=0; r<headerRowIdx; r++){
+    const row = rows[r] || [];
+    for (let c=0; c<row.length; c++){
+      const val = norm(row[c]);
+      if (val && val === val.toUpperCase() && /^[A-ZÁÉÍÓÚÑ]{3,}$/.test(val) && !skipWords.includes(val) && !val.includes('JORNADA') && !val.includes('ANDALUZ')){
+        athlete = val; break;
+      }
+    }
+    if (athlete) break;
+  }
+
+  const days = {};
+  let currentDay = null;
+
+  for (let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r] || [];
+    const dayCell = norm(row[dayColIdx]).toUpperCase();
+    if (dayCell && DAY_ORDER.includes(dayCell)){
+      currentDay = dayCell;
+      if (!days[currentDay]) days[currentDay] = [];
+    }
+    if (!currentDay) continue;
+
+    const codeCellRaw = row[codeColIdx];
+    const codeCell = norm(codeCellRaw);
+    if (!codeCell) continue;
+
+    const parts = parseCodeCell(codeCell);
+    const entry = { sets: [] };
+
+    if (parts){
+      entry.type = 'exercise';
+      entry.code = parts[0].code;
+      entry.parts = (parts.length > 1 || parts[0].modifier) ? parts : null;
+      entry.name = buildComboName(parts);
+    } else {
+      entry.type = REST_WORDS.includes(codeCell.toUpperCase()) ? 'rest' : 'note';
+      entry.label = codeCell;
+    }
+
+    if (entry.type === 'exercise'){
+      for (let g=0; g<numGroups; g++){
+        const kgIdx = groupStart + g*3;
+        const kg = row[kgIdx], s = row[kgIdx+1], rr = row[kgIdx+2];
+        if (kg !== null && kg !== undefined && kg !== '' && !isNaN(Number(kg))){
+          const repsInfo = parseRepsCell(rr);
+          entry.sets.push({
+            kg: Number(kg),
+            series: (s!==null&&s!==undefined&&s!=='' && !isNaN(Number(s)))? Number(s): null,
+            reps: repsInfo.total,
+            repsParts: repsInfo.parts
+          });
+        }
+      }
+      if (entry.sets.length === 0) continue;
+    }
+
+    days[currentDay].push(entry);
+  }
+
+  const anyData = Object.keys(days).length > 0;
+  if (!anyData) return { ok:false, error:'no-days', rows };
+
+  return { ok:true, meta:{ athlete, week, jornada }, days };
+}
+
+function parseWorkbook(workbook){
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, raw:true, defval:null });
+  return parseRows(rows);
+}
+
+/* ============== PDF PARSER ============== */
+/* PDFs have no cells, just positioned text. We rebuild a grid the same shape
+   parseRows() expects by anchoring column x-positions from the header row
+   ("CODIGO" ... "TO") and bucketing every other text item into the nearest
+   column to its left (a "floor" search), which mirrors how a spreadsheet's
+   printed/exported PDF actually lays out cell content. */
+const PDF_HEADER_WORDS = ['CODIGO','CÓDIGO','REF','KG','S','R','TO','PM','IMR'];
+
+function pdfExpandTokens(item){
+  const raw = item.str;
+  const str = raw.trim();
+  if (!str) return [];
+  const words = str.split(/\s+/);
+  const isAllNumeric = words.every(w => /^\d+([.,]\d+)?%?$/.test(w));
+  const isAllHeaderWords = words.length > 1 && words.every(w => PDF_HEADER_WORDS.includes(w.toUpperCase()));
+  if (!(isAllNumeric || isAllHeaderWords) || words.length === 1){
+    return [{ str, x: item.x, y: item.y }];
+  }
+  const out = [];
+  const re = /\S+/g;
+  let m;
+  const len = raw.length || 1;
+  while ((m = re.exec(raw)) !== null){
+    const estX = item.x + (m.index / len) * item.width;
+    out.push({ str: m[0], x: estX, y: item.y });
+  }
+  return out;
+}
+
+function pdfGroupRows(items, yTol){
+  const sorted = [...items].sort((a,b)=> b.y - a.y);
+  const rows = [];
+  sorted.forEach(it=>{
+    let row = rows.find(r => Math.abs(r.y - it.y) <= yTol);
+    if (!row){ row = { y: it.y, items: [] }; rows.push(row); }
+    row.items.push(it);
+  });
+  rows.forEach(r => r.items.sort((a,b)=> a.x - b.x));
+  rows.sort((a,b)=> b.y - a.y);
+  return rows;
+}
+
+function pdfFindHeaderRow(rows){
+  for (const r of rows){
+    if (r.items.some(it => norm(it.str).toUpperCase()==='CODIGO' || norm(it.str).toUpperCase()==='CÓDIGO')) return r;
+  }
+  return null;
+}
+
+function pdfBuildBoundaries(headerRow){
+  const relevant = headerRow.items.filter(it => PDF_HEADER_WORDS.includes(norm(it.str).toUpperCase()));
+  relevant.sort((a,b)=>a.x-b.x);
+  const boundaries = [0];
+  let seenCodigo = false, seenTo = false;
+  for (const it of relevant){
+    const up = norm(it.str).toUpperCase();
+    if (up === 'CODIGO' || up === 'CÓDIGO'){ boundaries.push(it.x); seenCodigo = true; continue; }
+    if (!seenCodigo) continue;
+    if (seenTo) break;
+    boundaries.push(it.x);
+    if (up === 'TO') seenTo = true;
+  }
+  return boundaries;
+}
+
+function pdfAssignRow(row, boundaries, tol){
+  const out = new Array(boundaries.length).fill(null);
+  row.items.forEach(it=>{
+    let idx = 0;
+    for (let i=0;i<boundaries.length;i++){ if (boundaries[i] <= it.x + tol) idx = i; else break; }
+    if (out[idx] === null) out[idx] = norm(it.str);
+    else out[idx] += ' ' + norm(it.str);
+  });
+  return out;
+}
+
+async function extractGridFromPdf(arrayBuffer){
+  const data = new Uint8Array(arrayBuffer);
+  const doc = await window.pdfjsLib.getDocument({ data }).promise;
+  let allRows = [];
+  let boundaries = null;
+
+  for (let p=1; p<=doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    const items = content.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], width: it.width }))
+                               .filter(it => norm(it.str) !== '');
+    const tokens = items.flatMap(pdfExpandTokens);
+    const rows = pdfGroupRows(tokens, 3);
+
+    if (!boundaries){
+      const headerRow = pdfFindHeaderRow(rows);
+      if (headerRow) boundaries = pdfBuildBoundaries(headerRow);
+    }
+    if (!boundaries) continue;
+
+    rows.forEach(r => allRows.push(pdfAssignRow(r, boundaries, 4)));
+  }
+  return allRows;
+}
+
+async function parsePdf(arrayBuffer){
+  const rows = await extractGridFromPdf(arrayBuffer);
+  return parseRows(rows);
+}
+
+/* ============== IMAGE / SCANNED-PDF OCR PARSER ==============
+   For PDFs that are actually a flattened photo/screenshot (no text layer)
+   and for direct photo uploads. Detects the printed table's grid LINES
+   (not text) from pixel data, OCRs each cell individually, and assigns
+   day letters by position (L,M,X,J,V,S always appear in that fixed order
+   in this coach's template) rather than trying to OCR the stylised
+   rotated letters, which is unreliable. Because OCR can misread a digit,
+   the result always goes through a review screen before being saved. */
+
+const OCR_DAY_ORDER = ['L','M','X','J','V','S','D'];
+
+function ocrClusterPositions(sortedIndices, gap){
+  if (!sortedIndices.length) return [];
+  const groups = [[sortedIndices[0]]];
+  for (let i=1;i<sortedIndices.length;i++){
+    if (sortedIndices[i]-groups[groups.length-1][groups[groups.length-1].length-1] <= gap){
+      groups[groups.length-1].push(sortedIndices[i]);
+    } else groups.push([sortedIndices[i]]);
+  }
+  return groups.map(g => Math.round(g.reduce((a,b)=>a+b,0)/g.length));
+}
+
+function ocrClusterGroups(sortedIndices, gap){
+  if (!sortedIndices.length) return [];
+  const groups = [[sortedIndices[0]]];
+  for (let i=1;i<sortedIndices.length;i++){
+    if (sortedIndices[i]-groups[groups.length-1][groups[groups.length-1].length-1] <= gap){
+      groups[groups.length-1].push(sortedIndices[i]);
+    } else groups.push([sortedIndices[i]]);
+  }
+  return groups;
+}
+
+// Build a grayscale "darkness" lookup from canvas pixel data (1 = dark/ink, 0 = light)
+function ocrBuildDarkMask(imageData){
+  const { data, width, height } = imageData;
+  const mask = new Uint8Array(width*height);
+  for (let i=0, p=0; i<data.length; i+=4, p++){
+    const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    mask[p] = lum < 180 ? 1 : 0;
+  }
+  return { mask, width, height };
+}
+
+function ocrRowDarkFrac(mask, width, height, x0=0, x1=width){
+  const out = new Float32Array(height);
+  const span = x1 - x0;
+  for (let y=0;y<height;y++){
+    let c = 0;
+    const base = y*width;
+    for (let x=x0;x<x1;x++) c += mask[base+x];
+    out[y] = c/span;
+  }
+  return out;
+}
+
+function ocrColDarkFrac(mask, width, height, y0=0, y1=height){
+  const out = new Float32Array(width);
+  for (let x=0;x<width;x++){
+    let c = 0;
+    for (let y=y0;y<y1;y++) c += mask[y*width+x];
+    out[x] = c/(y1-y0);
+  }
+  return out;
+}
+
+// Find the tight bounding box of non-white content, to trim margins.
+function ocrContentBBox(mask, width, height){
+  let top=null, bottom=null, left=null, right=null;
+  const rowFrac = ocrRowDarkFrac(mask, width, height);
+  for (let y=0;y<height;y++){ if (rowFrac[y] > 0.002){ if (top===null) top=y; bottom=y; } }
+  if (top===null) return null;
+  const colFrac = ocrColDarkFrac(mask, width, height, top, bottom+1);
+  for (let x=0;x<width;x++){ if (colFrac[x] > 0.002){ if (left===null) left=x; right=x; } }
+  return { top, bottom, left, right };
+}
+
+async function ocrCropCanvas(srcCanvas, x0,y0,x1,y1){
+  const w = Math.max(1, x1-x0), h = Math.max(1, y1-y0);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(srcCanvas, x0, y0, w, h, 0, 0, w, h);
+  return c;
+}
+
+function ocrNorm(v){ return v===null||v===undefined ? '' : String(v).trim(); }
+function ocrFuzzyEq(a, b){
+  a = ocrNorm(a).toUpperCase(); b = b.toUpperCase();
+  if (!a) return false;
+  if (a === b) return true;
+  if (a.length >= 2 && (a.includes(b) || b.includes(a))) return true;
+  return false;
+}
+
+async function extractGridFromImageCanvas(sourceCanvas, onProgress){
+  // 1. Work at a consistent resolution for reliable thresholds
+  const targetW = 3000;
+  const scale = Math.min(2.5, targetW / sourceCanvas.width);
+  let work = sourceCanvas;
+  if (Math.abs(scale-1) > 0.05){
+    const c = document.createElement('canvas');
+    c.width = Math.round(sourceCanvas.width*scale);
+    c.height = Math.round(sourceCanvas.height*scale);
+    c.getContext('2d').drawImage(sourceCanvas, 0,0,c.width,c.height);
+    work = c;
+  }
+  const ctx = work.getContext('2d');
+  let imageData = ctx.getImageData(0,0,work.width,work.height);
+  let { mask, width, height } = ocrBuildDarkMask(imageData);
+
+  // 2. trim to content bbox
+  const bbox = ocrContentBBox(mask, width, height);
+  if (!bbox) return { ok:false, error:'blank-image' };
+  const cropped = await ocrCropCanvas(work, bbox.left, bbox.top, bbox.right+1, bbox.bottom+1);
+  imageData = cropped.getContext('2d').getImageData(0,0,cropped.width,cropped.height);
+  ({ mask, width, height } = ocrBuildDarkMask(imageData));
+
+  // 3. fine grid lines (this may include a few extra rows/cols from a title
+  //    block or logo above the real table -- harmless, we locate the real
+  //    header row explicitly in step 4 rather than assuming row 0 is it)
+  const rowFrac = ocrRowDarkFrac(mask, width, height);
+  const colFrac = ocrColDarkFrac(mask, width, height);
+  const rowLineIdx = []; for (let y=0;y<height;y++) if (rowFrac[y] > 0.5) rowLineIdx.push(y);
+  const colLineIdx = []; for (let x=0;x<width;x++) if (colFrac[x] > 0.5) colLineIdx.push(x);
+  let rowB = ocrClusterPositions(rowLineIdx, 15);
+  let colB = ocrClusterPositions(colLineIdx, 15);
+  if (!rowB.length || !colB.length) return { ok:false, error:'no-grid' };
+  if (colB[0] > 5) colB = [0, ...colB];
+  if (rowB.length < 2 || colB.length < 2) return { ok:false, error:'no-grid' };
+
+  const worker = await Tesseract.createWorker('spa');
+  await worker.setParameters({ tessedit_pageseg_mode: '7' });
+
+  async function ocrCell(x0,y0,x1,y1,inset){
+    const ix0=x0+inset, iy0=y0+inset, ix1=x1-inset, iy1=y1-inset;
+    if (ix1<=ix0 || iy1<=iy0) return '';
+    let dcount=0, total=0;
+    for (let y=iy0;y<iy1;y++) for (let x=ix0;x<ix1;x++){ total++; if (mask[y*width+x]) dcount++; }
+    if (total===0 || dcount/total < 0.0015) return '';
+    let crop = await ocrCropCanvas(cropped, ix0, iy0, ix1, iy1);
+    if (crop.width < 120){
+      const factor = Math.max(1, Math.round(150/Math.max(crop.width,1)));
+      const c2 = document.createElement('canvas');
+      c2.width = crop.width*factor; c2.height = crop.height*factor;
+      c2.getContext('2d').drawImage(crop, 0,0,c2.width,c2.height);
+      crop = c2;
+    }
+    const { data: { text } } = await worker.recognize(crop);
+    return text.trim();
+  }
+
+  // 4. locate the real header row (scan from the top until a cell reads
+  //    "CODIGO") -- this skips past any title/logo/summary block above the
+  //    actual table, so day-block detection below never gets confused by it.
+  let headerRowIdx = -1, codeColIdx = -1;
+  const headerScanLimit = Math.min(rowB.length-1, 10);
+  for (let ri=0; ri<headerScanLimit && headerRowIdx===-1; ri++){
+    const y0=rowB[ri], y1=rowB[ri+1];
+    for (let ci=0; ci<colB.length-1; ci++){
+      const x0=colB[ci], x1=colB[ci+1];
+      const txt = await ocrCell(x0,y0,x1,y1,6);
+      if (ocrFuzzyEq(txt,'CODIGO') || ocrFuzzyEq(txt,'CÓDIGO')){
+        headerRowIdx = ri; codeColIdx = ci; break;
+      }
+    }
+  }
+  if (headerRowIdx === -1){ await worker.terminate(); return { ok:false, error:'no-header-visual' }; }
+
+  // 5. day-letter blocks via ink density in the sidebar, restricted to rows
+  //    at/after the header (so a logo or title block above can't shift them)
+  const dayX1 = colB[1];
+  const dayScanY0 = rowB[headerRowIdx];
+  const dayRowFrac = ocrRowDarkFrac(mask, width, height, 0, dayX1);
+  const inkyIdx = []; for (let y=dayScanY0;y<height;y++) if (dayRowFrac[y] > 0.03) inkyIdx.push(y);
+  const inkyGroups = ocrClusterGroups(inkyIdx, 20).filter(g => (g[g.length-1]-g[0]) > 40).slice(0,7);
+  let dayBlocks = [];
+  if (inkyGroups.length){
+    const centers = inkyGroups.map(g => (g[0]+g[g.length-1])/2);
+    const partition = [dayScanY0];
+    for (let i=0;i<centers.length-1;i++) partition.push((centers[i]+centers[i+1])/2);
+    partition.push(height);
+    dayBlocks = centers.map((_,i)=>({ day: OCR_DAY_ORDER[i], y0: partition[i], y1: partition[i+1] }));
+  }
+  function yToDay(y){
+    for (const b of dayBlocks) if (y >= b.y0 && y < b.y1) return b.day;
+    return null;
+  }
+
+  // 6. OCR the header row + all data rows below it
+  const rowsToRead = rowB.length-1-headerRowIdx;
+  const totalCells = rowsToRead * (colB.length-1);
+  let done = 0;
+  function tick(){ done++; if (onProgress) onProgress(Math.min(0.97, done/Math.max(totalCells,1))); }
+
+  const grid = [];
+  for (let ri=headerRowIdx; ri<rowB.length-1; ri++){
+    const y0=rowB[ri], y1=rowB[ri+1];
+    const rowOut = [ ri===headerRowIdx ? null : yToDay((y0+y1)/2) ];
+    for (let ci=1; ci<colB.length-1; ci++){
+      const x0=colB[ci], x1=colB[ci+1];
+      const txt = await ocrCell(x0,y0,x1,y1,6);
+      rowOut.push(txt);
+      tick();
+    }
+    grid.push(rowOut);
+  }
+  await worker.terminate();
+  if (onProgress) onProgress(1);
+
+  return { ok:true, rows: grid };
+}
+
+function parseOcrGrid(rows){
+  let headerRowIdx=-1, codeColIdx=-1;
+  for (let r=0;r<rows.length;r++){
+    const row = rows[r]||[];
+    for (let c=1;c<row.length;c++){
+      if (ocrFuzzyEq(row[c],'CODIGO') || ocrFuzzyEq(row[c],'CÓDIGO')){ headerRowIdx=r; codeColIdx=c; break; }
+    }
+    if (headerRowIdx!==-1) break;
+  }
+  if (headerRowIdx===-1) return { ok:false, error:'no-header', rows };
+
+  const header = rows[headerRowIdx];
+  const groupStart = codeColIdx + 2;
+  const kgIdxs = [];
+  for (let i=groupStart;i<header.length;i++) if (ocrFuzzyEq(header[i],'KG')) kgIdxs.push(i);
+  const numGroups = kgIdxs.length ? Math.floor((Math.max(...kgIdxs)-groupStart)/3)+1 : 0;
+
+  const days = {};
+  let currentDay = null;
+  for (let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r]||[];
+    const dayCell = row[0];
+    if (dayCell && OCR_DAY_ORDER.includes(dayCell)){
+      currentDay = dayCell;
+      if (!days[currentDay]) days[currentDay] = [];
+    }
+    if (!currentDay) continue;
+    const codeCell = ocrNorm(row[codeColIdx]);
+    if (!codeCell) continue;
+    if (codeCell.toUpperCase()==='NOTAS') break; // footer reached, stop
+    const parts = parseCodeCell(codeCell);
+    const entry = { sets: [] };
+    if (parts){
+      entry.type = 'exercise';
+      entry.code = parts[0].code;
+      entry.parts = (parts.length > 1 || parts[0].modifier) ? parts : null;
+      entry.name = buildComboName(parts);
+      for (let g=0; g<numGroups; g++){
+        const kgIdx = groupStart+g*3;
+        if (kgIdx+2 >= row.length) break;
+        const kg = ocrNorm(row[kgIdx]), s = ocrNorm(row[kgIdx+1]), rr = ocrNorm(row[kgIdx+2]);
+        if (/^\d+([.,]\d+)?$/.test(kg)){
+          const repsInfo = parseRepsCell(rr);
+          entry.sets.push({
+            kg: Number(kg.replace(',','.')),
+            series: /^\d+$/.test(s) ? Number(s) : null,
+            reps: repsInfo.total,
+            repsParts: repsInfo.parts
+          });
+        }
+      }
+      if (entry.sets.length===0) continue;
+    } else {
+      entry.type = REST_WORDS.includes(codeCell.toUpperCase()) ? 'rest' : 'note';
+      entry.label = codeCell;
+    }
+    days[currentDay].push(entry);
+  }
+  if (Object.keys(days).length===0) return { ok:false, error:'no-days', rows };
+  return { ok:true, meta:{ athlete:null, week:null, jornada:null }, days, needsReview:true };
+}
+
+async function parseImageOrScannedPdf(sourceCanvas, onProgress){
+  const grid = await extractGridFromImageCanvas(sourceCanvas, onProgress);
+  if (!grid.ok) return grid;
+  return parseOcrGrid(grid.rows);
+}
+
+async function loadImageFileToCanvas(file){
+  const dataUrl = await new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((res,rej)=>{
+    const im = new Image();
+    im.onload = ()=>res(im);
+    im.onerror = rej;
+    im.src = dataUrl;
+  });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img,0,0);
+  return c;
+}
+
+async function renderPdfPageToCanvas(arrayBuffer, pageNum, scale){
+  const doc = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const page = await doc.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width; canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas;
+}
+
+
+
+/* ============== ALMACENAMIENTO PERSISTENTE ==============
+   Usa window.storage (el almacén propio de los artefactos de Claude, que
+   persiste de verdad entre sesiones) en vez de localStorage, que en el
+   sandbox donde corre este artefacto no sobrevive fiablemente a cerrar la
+   app. Si por algún motivo window.storage no estuviera disponible, cae de
+   vuelta a localStorage como último recurso (mejor que nada, aunque no
+   persista igual de bien). */
+function hasArtifactStorage(){
+  return typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+}
+async function storageGet(key){
+  if (hasArtifactStorage()){
+    try{ const r = await window.storage.get(key, false); return r ? r.value : null; }catch(e){ return null; }
+  }
+  try{ return localStorage.getItem('wl_'+key); }catch(e){ return null; }
+}
+async function storageSet(key, value){
+  if (hasArtifactStorage()){
+    try{ await window.storage.set(key, value, false); return; }catch(e){}
+  }
+  try{ localStorage.setItem('wl_'+key, value); }catch(e){}
+}
+async function storageDelete(key){
+  if (hasArtifactStorage()){
+    try{ await window.storage.delete(key, false); return; }catch(e){}
+  }
+  try{ localStorage.removeItem('wl_'+key); }catch(e){}
+}
+
+const USERS_KEY = 'users_v2';
+const ACTIVE_USER_KEY = 'active_user_v2';
+const LAST_BACKUP_KEY = 'last_backup_v2';
+function userDataKey(userId){ return 'user_data_v2:' + userId; }
+function feelingSelector(selectedKey, onChange){
+  const row = el('div');
+  row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
+  FEELING_OPTIONS.forEach(opt=>{
+    const btn = el('button', null, opt.label);
+    const selected = selectedKey === opt.key;
+    btn.style.cssText = 'flex:1;min-width:70px;padding:9px 4px;border-radius:8px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;cursor:pointer;' +
+      (selected ? 'background:var(--yellow-deep);border:1.5px solid var(--yellow-deep);color:#2a1e04;' : 'background:var(--surface-2);border:1.5px solid var(--surface-3);color:var(--muted);');
+    btn.onclick = ()=> onChange(selected ? null : opt.key);
+    row.appendChild(btn);
+  });
+  return row;
+}
+
+function rpeInput(value, onChange){
+  const wrap = el('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:8px;';
+  const lbl = el('span','', 'RPE');
+  lbl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--muted-2);flex-shrink:0;';
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.min = 1; inp.max = 10; inp.inputMode = 'numeric';
+  inp.value = value===null||value===undefined ? '' : value;
+  inp.placeholder = '1-10';
+  inp.style.cssText = 'width:64px;background:var(--surface-2);border:1.5px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:14px;padding:8px;text-align:center;';
+  inp.addEventListener('change', ()=>{
+    const v = inp.value.trim();
+    if (v==='') { onChange(null); return; }
+    let n = parseInt(v,10);
+    if (isNaN(n)) { onChange(null); return; }
+    n = Math.max(1, Math.min(10, n));
+    onChange(n);
+  });
+  const hint = el('span','', 'esfuerzo percibido');
+  hint.style.cssText = 'font-size:11.5px;color:var(--muted-2);';
+  wrap.appendChild(lbl); wrap.appendChild(inp); wrap.appendChild(hint);
+  return wrap;
+}
+
+function noteKey(plan, day){ return plan.id + '|' + day; }
+
+// Las notas del día ahora pueden llevar, además del texto libre, un par de
+// datos rápidos útiles para quien revise el entreno a distancia (RPE y
+// sensación general). Se guardan como objeto; se admite el formato antiguo
+// (solo texto) por compatibilidad con notas ya guardadas.
+function normalizeNote(raw){
+  if (!raw) return { text:'', rpe:null, feeling:null };
+  if (typeof raw === 'string') return { text: raw, rpe:null, feeling:null };
+  return { text: raw.text||'', rpe: (raw.rpe===undefined?null:raw.rpe), feeling: (raw.feeling===undefined?null:raw.feeling) };
+}
+const FEELING_OPTIONS = [
+  { key:'mal', label:'😞 Mal' },
+  { key:'regular', label:'😐 Regular' },
+  { key:'bien', label:'🙂 Bien' },
+  { key:'muybien', label:'💪 Muy bien' }
+];
+function feelingLabel(key){
+  const f = FEELING_OPTIONS.find(o=>o.key===key);
+  return f ? f.label : null;
+}
+
+function makeUserId(){ return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function makeUser(name){
+  return { id: makeUserId(), name: name, objetivos: { metas: { 1: null, 10: null } }, rms: {}, metrics: [] };
+}
+
+async function loadUsersAsync(){
+  try{ const raw = await storageGet(USERS_KEY); return raw ? JSON.parse(raw) : []; }catch(e){ return []; }
+}
+function saveUsersAsync(u){ return storageSet(USERS_KEY, JSON.stringify(u)); }
+async function loadActiveUserIdAsync(){ return await storageGet(ACTIVE_USER_KEY); }
+function saveActiveUserIdAsync(id){ if (!id) return Promise.resolve(); return storageSet(ACTIVE_USER_KEY, id); }
+
+let userDataCache = {}; // { userId: {plans,checks,notes} } — caché en memoria para no repetir lecturas
+
+async function loadUserDataAsync(userId){
+  try{
+    const raw = await storageGet(userDataKey(userId));
+    const data = raw ? (function(){ const p = JSON.parse(raw); return { plans:p.plans||[], checks:p.checks||{}, notes:p.notes||{} }; })() : { plans:[], checks:{}, notes:{} };
+    userDataCache[userId] = data;
+    return data;
+  }catch(e){
+    const empty = { plans:[], checks:{}, notes:{} };
+    userDataCache[userId] = empty;
+    return empty;
+  }
+}
+function saveUserDataAsync(userId, data){
+  userDataCache[userId] = data;
+  return storageSet(userDataKey(userId), JSON.stringify(data));
+}
+function deleteUserDataAsync(userId){
+  delete userDataCache[userId];
+  return storageDelete(userDataKey(userId));
+}
+function persistUserData(){
+  saveUserDataAsync(activeUserId, { plans: state.plans, checks: state.checks, notes: state.notes });
+}
+function prefetchAllUserData(){
+  users.forEach(u=>{
+    if (!userDataCache[u.id]){
+      loadUserDataAsync(u.id).then(()=>{ if (state.showUsers) render(); });
+    }
+  });
+}
+
+// Migración desde la versión antigua del almacenamiento (localStorage),
+// para no perder datos que ya existieran de sesiones previas en este navegador.
+async function migrateLegacyLocalStorage(){
+  let legacyUsers = [];
+  try{ legacyUsers = JSON.parse(localStorage.getItem('wl_users_v1')) || []; }catch(e){}
+  if (!legacyUsers.length) return null;
+  for (const u of legacyUsers){
+    let plans = [], checks = {}, notes = {};
+    try{ plans = JSON.parse(localStorage.getItem('wl_plans_v1__'+u.id)) || []; }catch(e){}
+    try{ checks = JSON.parse(localStorage.getItem('wl_checks_v1__'+u.id)) || {}; }catch(e){}
+    try{ notes = JSON.parse(localStorage.getItem('wl_notes_v1__'+u.id)) || {}; }catch(e){}
+    await saveUserDataAsync(u.id, { plans, checks, notes });
+  }
+  await saveUsersAsync(legacyUsers);
+  let legacyActive = null;
+  try{ legacyActive = localStorage.getItem('wl_active_user_v1'); }catch(e){}
+  const activeId = (legacyActive && legacyUsers.find(u=>u.id===legacyActive)) ? legacyActive : legacyUsers[0].id;
+  await saveActiveUserIdAsync(activeId);
+  return { users: legacyUsers, activeUserId: activeId };
+}
+
+let users = [];
+let activeUserId = null;
+let lastBackupTs = null;
+
+function getUser(id){ return users.find(u=>u.id===id); }
+function getActiveUser(){ return getUser(activeUserId); }
+
+async function switchActiveUser(id){
+  activeUserId = id;
+  saveActiveUserIdAsync(id);
+  const data = await loadUserDataAsync(id);
+  state.plans = data.plans;
+  state.checks = data.checks;
+  state.notes = data.notes;
+  const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
+  state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
+  state.activeDay = null;
+  state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
+  state.showUsers = false;
+  state.showProfile = false;
+  state.showHistory = false;
+  state.showAnalytics = false;
+  render();
+}
+
+/* ============== APP STATE ============== */
+let state = {
+  plans: [],
+  exerciseVideos: {}, // { 'día|idxEjercicio': [{id,name,url,analysis}] } — solo en memoria, no se guarda
+  checks: {},
+  notes: {},
+  activePlanId: null,
+  activeDay: null,
+  showDebug: false,
+  showHistory: false,
+  error: null,
+  rawPreview: null,
+  ocrBusy: false,
+  ocrProgress: 0,
+  reviewDraft: null,
+  reviewDraftFor: null,
+  reviewDismissed: false,
+  flashcard: null,        // { day, exIdx, cardIdx }
+  showAnalytics: false,
+  confirmDeleteId: null,
+  newWeightDraft: null,   // { kg, series, reps } while the "+ nuevo peso" mini form is open
+  showUsers: false,
+  showProfile: false,
+  addingUser: false,
+  newUserName: '',
+  renamingUserId: null,
+  renameDraft: '',
+  confirmDeleteUserId: null,
+  backupMessage: null,
+  pendingImportFile: null,
+  showBackupText: false,
+  backupText: '',
+  rmForm: null,            // { code, value, date } while the "+ Registrar RM" mini form is open
+  metricForm: null,        // { date, peso, sistolica, diastolica } while the "+ Registrar medida" mini form is open
+  showDayNote: false,
+  dayNoteDraft: null,
+  confirmDeleteExercise: null,
+  showMenu: false,
+  dayReport: null,   // { day, planId, loading, text, error }
+  weekReport: null   // { planId, loading, text, error }
+};
+
+let storageBackendUsed = 'unknown'; // 'claude' | 'local' | 'none' — diagnóstico visible del almacén real
+
+async function detectStorageBackend(){
+  if (!hasArtifactStorage()){ storageBackendUsed = 'local'; return; }
+  try{
+    const testKey = '__wl_storage_probe__';
+    const stamp = String(Date.now());
+    await window.storage.set(testKey, stamp, false);
+    const r = await window.storage.get(testKey, false);
+    storageBackendUsed = (r && r.value === stamp) ? 'claude' : 'local';
+  }catch(e){
+    storageBackendUsed = 'local';
+  }
+}
+
+function renderBootLoading(){
+  const wrap = el('div');
+  wrap.style.cssText = 'min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:Inter,sans-serif;font-size:14px;background:var(--bg);';
+  wrap.textContent = 'Cargando tus datos…';
+  return wrap;
+}
+
+async function initApp(){
+  root.innerHTML = '';
+  root.appendChild(renderBootLoading());
+
+  await detectStorageBackend();
+
+  users = await loadUsersAsync();
+  activeUserId = await loadActiveUserIdAsync();
+
+  if (!users.length){
+    const migrated = await migrateLegacyLocalStorage();
+    if (migrated){
+      users = migrated.users;
+      activeUserId = migrated.activeUserId;
+    } else {
+      let legacyPlans = null, legacyChecks = null;
+      try{ legacyPlans = localStorage.getItem('wl_plans_v1'); }catch(e){}
+      try{ legacyChecks = localStorage.getItem('wl_checks_v1'); }catch(e){}
+      const first = makeUser('Yo');
+      users = [first];
+      activeUserId = first.id;
+      await saveUsersAsync(users);
+      await saveActiveUserIdAsync(activeUserId);
+      if (legacyPlans || legacyChecks){
+        let plans = [], checks = {};
+        try{ plans = JSON.parse(legacyPlans) || []; }catch(e){}
+        try{ checks = JSON.parse(legacyChecks) || {}; }catch(e){}
+        await saveUserDataAsync(activeUserId, { plans, checks, notes:{} });
+      }
+    }
+  }
+  if (!activeUserId || !users.find(u=>u.id===activeUserId)){
+    activeUserId = users[0].id;
+    await saveActiveUserIdAsync(activeUserId);
+  }
+
+  const data = await loadUserDataAsync(activeUserId);
+  state.plans = data.plans;
+  state.checks = data.checks;
+  state.notes = data.notes;
+  const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
+  state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
+  state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
+
+  try{ const raw = await storageGet(LAST_BACKUP_KEY); lastBackupTs = raw ? Number(raw) : null; }catch(e){ lastBackupTs = null; }
+
+  render();
+  prefetchAllUserData();
+}
+
+function planId(meta){
+  return 'w' + (meta.week ?? 'x') + '_' + (meta.jornada ? meta.jornada.replace(/\s+/g,'').slice(0,20) : 'plan');
+}
+
+function tonnage(dayEntries){
+  let t = 0;
+  (dayEntries||[]).forEach(e=>{
+    if (e.type === 'exercise'){
+      e.sets.forEach(s=>{ t += (s.kg||0) * (s.series||1) * (s.reps||1); });
+    }
+  });
+  return t;
+}
+
+function checkKey(plan, day, exIdx, setIdx){
+  return plan.id + '|' + day + '|' + exIdx + '|' + setIdx;
+}
+
+// Borra un ejercicio del día y reindexa las marcas (bien/mal) del resto de
+// ejercicios de ese día, para que no se desincronicen con su nueva posición.
+function deleteExerciseEntry(plan, day, idx){
+  plan.days[day].splice(idx, 1);
+  const prefix = plan.id + '|' + day + '|';
+  const newChecks = {};
+  Object.keys(state.checks).forEach(k=>{
+    if (k.startsWith(prefix)){
+      const rest = k.slice(prefix.length);
+      const sep = rest.indexOf('|');
+      const exIdx = parseInt(rest.slice(0,sep),10);
+      const setPart = rest.slice(sep+1);
+      if (exIdx === idx) return; // se descartan las marcas del ejercicio borrado
+      const newExIdx = exIdx > idx ? exIdx-1 : exIdx;
+      newChecks[plan.id+'|'+day+'|'+newExIdx+'|'+setPart] = state.checks[k];
+    } else {
+      newChecks[k] = state.checks[k];
+    }
+  });
+  state.checks = newChecks;
+  persistUserData();
+}
+
+function dayStats(plan, day){
+  const entries = plan.days[day] || [];
+  let totalSets = 0, checkedSets = 0;
+  entries.forEach((e,exIdx)=>{
+    if (e.type !== 'exercise') return;
+    e.sets.forEach((s,setIdx)=>{
+      totalSets++;
+      if (state.checks[checkKey(plan,day,exIdx,setIdx)]) checkedSets++;
+    });
+  });
+  return { totalSets, checkedSets };
+}
+
+/* ============== RENDER ============== */
+const root = document.getElementById('root');
+
+/* ---- OCR progress screen ---- */
+function renderOcrProgress(){
+  const wrap = el('div','upload-screen');
+  wrap.appendChild(el('div','upload-mark'));
+  wrap.appendChild(el('h1','brand','Leyendo tu foto…'));
+  const pct = Math.round((state.ocrProgress||0)*100);
+  wrap.appendChild(el('p','tagline','Estoy identificando la tabla y leyendo cada celda. Puede tardar uno o dos minutos la primera vez.'));
+  const barWrap = el('div');
+  barWrap.style.cssText = 'width:100%;max-width:300px;height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden;border:1px solid var(--surface-3);';
+  const bar = el('div');
+  bar.style.cssText = 'height:100%;background:var(--yellow);width:'+pct+'%;transition:width .2s ease;';
+  barWrap.appendChild(bar);
+  wrap.appendChild(barWrap);
+  wrap.appendChild(el('div', null, pct+'%'));
+  const pctEl = wrap.lastChild;
+  pctEl.style.cssText = 'margin-top:10px;font-family:IBM Plex Mono,monospace;color:var(--muted);font-size:13px;';
+  return wrap;
+}
+
+/* ---- Review screen (editable, before saving an OCR'd plan) ---- */
+function reviewEnsureDraft(plan){
+  if (!state.reviewDraft || state.reviewDraftFor !== plan.id){
+    state.reviewDraft = JSON.parse(JSON.stringify(plan.days));
+    state.reviewDraftFor = plan.id;
+  }
+}
+
+function renderReviewScreen(plan){
+  reviewEnsureDraft(plan);
+  const draft = state.reviewDraft;
+  const wrap = el('div','app');
+
+  const top = el('div','topbar');
+  top.appendChild(el('div','athlete-name', plan.manualEntry ? 'Nuevo plan a mano' : 'Revisar lectura'));
+  top.appendChild(el('div','meta-line', plan.manualEntry
+    ? 'Añade cada ejercicio con su código, kg, series y repes. Se guarda cuando pulses "Confirmar y guardar".'
+    : 'Leído automáticamente de la foto — compara con la imagen y corrige lo que falte antes de guardar.'));
+  wrap.appendChild(top);
+
+  const section = el('div','day-section');
+  section.style.paddingTop = '16px';
+
+  DAY_ORDER.forEach(d=>{
+    if (!draft[d]) return;
+    const heading = el('div','day-heading');
+    heading.appendChild(el('h2', null, DAY_NAMES[d]));
+    section.appendChild(heading);
+
+    draft[d].forEach((entry, idx)=>{
+      section.appendChild(renderReviewEntry(plan, d, entry, idx));
+    });
+
+    const addRow = el('div');
+    addRow.style.cssText = 'display:flex;gap:8px;margin:6px 0 20px;';
+    const addExBtn = el('button','tb-btn','+ Ejercicio');
+    addExBtn.onclick = ()=>{
+      draft[d].push({ type:'exercise', code:null, name:null, sets:[{kg:null,series:null,reps:null}] });
+      render();
+    };
+    const addNoteBtn = el('button','tb-btn','+ Nota / descanso');
+    addNoteBtn.onclick = ()=>{
+      draft[d].push({ type:'note', label:'' });
+      render();
+    };
+    addRow.appendChild(addExBtn); addRow.appendChild(addNoteBtn);
+    section.appendChild(addRow);
+  });
+
+  wrap.appendChild(section);
+
+  const actions = el('div');
+  actions.style.cssText = 'position:sticky;bottom:0;background:var(--bg);padding:14px 20px 24px;border-top:1px solid var(--border);display:flex;gap:10px;';
+  const cancelBtn = el('button','tb-btn','Descartar y subir otra');
+  cancelBtn.style.flex = '1';
+  cancelBtn.onclick = ()=>{
+    state.plans = state.plans.filter(p=>p.id!==plan.id);
+    persistUserData();
+    state.activePlanId = null;
+    state.reviewDraft = null; state.reviewDraftFor = null;
+    render();
+  };
+  const confirmBtn = el('button','mark-btn ok selected','Confirmar y guardar');
+  confirmBtn.style.flex = '2';
+  confirmBtn.onclick = ()=>{
+    plan.days = state.reviewDraft;
+    plan.needsReview = false;
+    persistUserData();
+    state.reviewDraft = null; state.reviewDraftFor = null;
+    state.reviewDismissed = true;
+    render();
+  };
+  actions.appendChild(cancelBtn); actions.appendChild(confirmBtn);
+  wrap.appendChild(actions);
+
+  return wrap;
+}
+
+function reviewMiniInput(value, placeholder, width, onCommit){
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.inputMode = 'numeric';
+  inp.value = value===null||value===undefined ? '' : value;
+  inp.placeholder = placeholder || '';
+  inp.style.cssText = 'width:'+width+'px;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:7px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:13px;padding:7px 6px;text-align:center;';
+  inp.addEventListener('change', ()=> onCommit(inp.value.trim()));
+  return inp;
+}
+
+function renderReviewEntry(plan, day, entry, idx){
+  const card = el('div','ex-card');
+  card.style.marginBottom = '10px';
+
+  if (entry.type !== 'exercise'){
+    const row = el('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.value = entry.label || '';
+    labelInput.placeholder = 'Descanso, competición, nota…';
+    labelInput.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13.5px;padding:9px 10px;';
+    labelInput.addEventListener('change', ()=>{
+      entry.label = labelInput.value.trim();
+      entry.type = REST_WORDS.includes(entry.label.toUpperCase()) ? 'rest' : 'note';
+    });
+    const delBtn = el('button', null, '✕');
+    delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);border-radius:8px;width:34px;height:34px;cursor:pointer;';
+    delBtn.onclick = ()=>{ state.reviewDraft[day].splice(idx,1); render(); };
+    row.appendChild(labelInput); row.appendChild(delBtn);
+    card.appendChild(row);
+    return card;
+  }
+
+  const top = el('div','ex-top');
+  const codeInput = reviewMiniInput(entry.code, 'cód.', 50, (v)=>{
+    entry.code = /^\d+$/.test(v) ? parseInt(v,10) : null;
+    entry.name = entry.code!==null ? (DICT[entry.code]||null) : null;
+    nameLabel.textContent = entry.name || (entry.code!==null ? 'Código '+entry.code+' (sin identificar)' : 'Código?');
+    nameLabel.className = 'ex-name' + (entry.name ? '' : ' unknown');
+  });
+  top.appendChild(codeInput);
+  const info = el('div','ex-info');
+  const nameLabel = el('div','ex-name'+(entry.name?'':' unknown'), entry.name || (entry.code!==null?('Código '+entry.code+' (sin identificar)'):'Código?'));
+  info.appendChild(nameLabel);
+  top.appendChild(info);
+  const delBtn = el('button', null, '✕');
+  delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;';
+  delBtn.onclick = ()=>{ state.reviewDraft[day].splice(idx,1); render(); };
+  top.appendChild(delBtn);
+  card.appendChild(top);
+
+  const setsWrap = el('div');
+  setsWrap.style.cssText = 'margin:12px 0 6px 0;display:flex;flex-direction:column;gap:6px;';
+  entry.sets.forEach((s, sidx)=>{
+    const row = el('div');
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;';
+    const kgI = reviewMiniInput(s.kg, 'kg', 55, v=>{ s.kg = v===''?null:Number(v.replace(',','.')); });
+    const xLbl = el('span', null, '×');
+    xLbl.style.color = 'var(--muted-2)';
+    const serI = reviewMiniInput(s.series, 'series', 55, v=>{ s.series = v===''?null:parseInt(v,10); });
+    const xLbl2 = el('span', null, '×');
+    xLbl2.style.color = 'var(--muted-2)';
+    const repDisplayVal = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '');
+    const repI = reviewMiniInput(repDisplayVal, 'repes', 55, v=>{
+      const info = parseRepsCell(v);
+      s.reps = info.total;
+      s.repsParts = info.parts;
+    });
+    repI.inputMode = 'text'; // admite "2+1" para combos con repes repartidas
+    const rmBtn = el('button', null, '×');
+    rmBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-size:16px;cursor:pointer;padding:0 4px;';
+    rmBtn.onclick = ()=>{ entry.sets.splice(sidx,1); render(); };
+    row.appendChild(kgI); row.appendChild(xLbl); row.appendChild(serI); row.appendChild(xLbl2); row.appendChild(repI); row.appendChild(rmBtn);
+    setsWrap.appendChild(row);
+  });
+  card.appendChild(setsWrap);
+
+  const addSetBtn = el('button','tb-btn','+ peso');
+  addSetBtn.style.marginTop = '4px';
+  addSetBtn.onclick = ()=>{ entry.sets.push({kg:null,series:null,reps:null}); render(); };
+  card.appendChild(addSetBtn);
+
+  return card;
+}
+
+function render(){
+  root.innerHTML = '';
+  if (state.ocrBusy){
+    root.appendChild(renderOcrProgress());
+    return;
+  }
+  if (state.showProfile){
+    root.appendChild(renderProfileScreen());
+    if (state.showUsers) root.appendChild(renderUsersSheet());
+    if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+    return;
+  }
+  const activePlan = state.plans.find(p=>p.id===state.activePlanId);
+  if (!activePlan){
+    root.appendChild(renderUpload());
+    if (state.showUsers) root.appendChild(renderUsersSheet());
+    if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+    return;
+  }
+  if (activePlan.needsReview && !state.reviewDismissed){
+    root.appendChild(renderReviewScreen(activePlan));
+    return;
+  }
+  if (state.showAnalytics){
+    root.appendChild(renderAnalyticsScreen());
+    return;
+  }
+  if (!state.activeDay || !activePlan.days[state.activeDay]){
+    const firstDay = DAY_ORDER.find(d=>activePlan.days[d]);
+    state.activeDay = firstDay || 'L';
+  }
+  root.appendChild(renderApp(activePlan));
+  if (state.flashcard) root.appendChild(renderFlashcardOverlay(activePlan));
+  if (state.showHistory) root.appendChild(renderHistorySheet());
+  if (state.showUsers) root.appendChild(renderUsersSheet());
+  if (state.showDayNote) root.appendChild(renderDayNoteOverlay(activePlan));
+  if (state.dayReport) root.appendChild(renderDayReportOverlay());
+  if (state.weekReport) root.appendChild(renderWeekReportOverlay(activePlan));
+  if (state.showMenu) root.appendChild(renderMenuSheet(activePlan));
+  if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+}
+
+function el(tag, cls, html){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+/* ---- Upload screen ---- */
+function renderUpload(){
+  const wrap = el('div','upload-screen');
+  wrap.appendChild(el('div','upload-mark'));
+  wrap.appendChild(el('h1','brand','Mi Plan'));
+  wrap.appendChild(el('p','tagline','Sube el Excel, el PDF o una foto que te manda tu entrenador y lo convierto en tu plan del día, con los ejercicios traducidos y listos para marcar.'));
+
+  const activeUser = getActiveUser();
+  const userBadge = el('div');
+  userBadge.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--surface-3);border-radius:20px;padding:6px 14px 6px 6px;margin-bottom:22px;cursor:pointer;';
+  const avatar = el('div', null, (activeUser.name||'?').trim().charAt(0).toUpperCase());
+  avatar.style.cssText = 'width:26px;height:26px;border-radius:50%;background:var(--surface-3);color:var(--chalk);display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;flex-shrink:0;';
+  userBadge.appendChild(avatar);
+  const nameSpan = el('span', null, activeUser.name);
+  nameSpan.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.02em;';
+  userBadge.appendChild(nameSpan);
+  const changeSpan = el('span', null, users.length > 1 ? '· cambiar' : '· nuevo deportista');
+  changeSpan.style.cssText = 'color:var(--muted-2);font-size:11.5px;';
+  userBadge.appendChild(changeSpan);
+  userBadge.onclick = ()=>{ state.showUsers = true; render(); };
+  wrap.appendChild(userBadge);
+
+  const restoreRow = el('div');
+  restoreRow.style.cssText = 'margin-bottom:22px;text-align:center;';
+  const restoreLabel = document.createElement('label');
+  restoreLabel.textContent = '⬆️ Restaurar mi última copia de seguridad';
+  restoreLabel.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1.5px dashed var(--surface-3);color:var(--chalk);font-family:Inter,sans-serif;font-weight:600;font-size:13px;padding:10px 16px;border-radius:10px;cursor:pointer;';
+  const restoreInput = document.createElement('input');
+  restoreInput.type = 'file'; restoreInput.accept = 'application/json,.json'; restoreInput.style.display = 'none';
+  restoreInput.addEventListener('change', (e)=>{
+    if (e.target.files.length){ state.showUsers = true; state.pendingImportFile = e.target.files[0]; render(); }
+  });
+  restoreLabel.appendChild(restoreInput);
+  restoreRow.appendChild(restoreLabel);
+  wrap.appendChild(restoreRow);
+
+  if (anyUserHasData()){
+    const daysSinceBackup = lastBackupTs ? Math.floor((Date.now()-lastBackupTs)/86400000) : null;
+    if (daysSinceBackup === null || daysSinceBackup >= 7){
+      const reminder = el('div');
+      reminder.style.cssText = 'background:var(--surface-2);border:1px solid var(--surface-3);border-radius:12px;padding:12px 14px;margin-bottom:20px;max-width:340px;font-size:12.5px;color:var(--muted);line-height:1.5;text-align:left;';
+      const txt = document.createElement('span');
+      txt.textContent = (daysSinceBackup===null
+        ? 'Todavía no has hecho ninguna copia de seguridad. '
+        : 'Hace ' + daysSinceBackup + ' días de tu última copia. ') +
+        'Los datos de esta app NO sobreviven a cerrarla del todo — ';
+      reminder.appendChild(txt);
+      const link = document.createElement('button');
+      link.textContent = 'haz una copia ahora';
+      link.style.cssText = 'background:none;border:none;color:var(--yellow-deep);font-weight:600;text-decoration:underline;cursor:pointer;padding:0;font-size:12.5px;font-family:Inter,sans-serif;';
+      link.onclick = ()=>{ state.showUsers = true; render(); };
+      reminder.appendChild(link);
+      wrap.appendChild(reminder);
+    }
+  }
+
+  const dz = el('div','dropzone');
+  dz.appendChild(el('div','dz-title','Subir plan'));
+  dz.appendChild(el('div','dz-sub','Toca aquí o arrastra el archivo .xlsx, .pdf o una foto'));
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept='.xlsx,.xls,.pdf,image/*';
+  dz.appendChild(input);
+  dz.onclick = ()=> input.click();
+  ['dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');}));
+  dz.addEventListener('drop', e=>{
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  input.addEventListener('change', e=>{
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+  wrap.appendChild(dz);
+
+  const orLine = el('div', null, 'o');
+  orLine.style.cssText = 'color:var(--muted-2);font-size:12px;margin:14px 0;text-transform:uppercase;letter-spacing:.05em;';
+  wrap.appendChild(orLine);
+
+  const manualBtn = el('button', null, 'Introducir a mano');
+  manualBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:600;font-size:13.5px;text-transform:uppercase;letter-spacing:.03em;padding:12px 22px;border-radius:10px;cursor:pointer;';
+  manualBtn.onclick = ()=>{
+    const id = 'manual_' + Date.now();
+    const days = {};
+    DAY_ORDER.slice(0,6).forEach(d => { days[d] = []; });
+    const plan = { id, meta:{}, days, uploadedAt: Date.now(), needsReview: true, manualEntry: true };
+    state.plans.push(plan);
+    persistUserData();
+    state.activePlanId = id;
+    state.activeDay = null;
+    state.reviewDismissed = false;
+    render();
+  };
+  wrap.appendChild(manualBtn);
+
+  const profileLink = el('button', null, '🎯 Objetivos y RM de ' + activeUser.name);
+  profileLink.style.cssText = 'background:none;border:none;color:var(--yellow-deep);font-family:Inter,sans-serif;font-weight:600;font-size:13px;cursor:pointer;text-decoration:underline;margin-top:18px;';
+  profileLink.onclick = ()=>{ state.showProfile = true; render(); };
+  wrap.appendChild(profileLink);
+
+  if (state.error){
+    wrap.appendChild(el('div','upload-error', state.error));
+  }
+
+  if (state.plans.length){
+    const hp = el('div','history-pick');
+    const btn = document.createElement('button');
+    btn.textContent = 'Ver semanas anteriores (' + state.plans.length + ')';
+    btn.onclick = ()=>{ state.showHistory = true; state.activePlanId = state.plans[state.plans.length-1].id; render(); };
+    hp.appendChild(document.createTextNode('¿Ya subiste planes antes? '));
+    hp.appendChild(btn);
+    wrap.appendChild(hp);
+  }
+  return wrap;
+}
+
+function handleFile(file){
+  const name = (file.name || '').toLowerCase();
+  const isPdf = name.endsWith('.pdf');
+  const isImage = /\.(jpe?g|png|webp|heic)$/i.test(name) || (file.type && file.type.startsWith('image/'));
+
+  async function run(buf){
+    try{
+      let result;
+
+      if (isImage){
+        state.ocrBusy = true; state.ocrProgress = 0; render();
+        const canvas = await loadImageFileToCanvas(file);
+        result = await parseImageOrScannedPdf(canvas, (p)=>{ state.ocrProgress = p; render(); });
+        state.ocrBusy = false;
+      } else if (isPdf){
+        result = await parsePdf(buf);
+        if (!result.ok){
+          // no text layer found -- fall back to OCR by rendering the page(s) as images
+          state.ocrBusy = true; state.ocrProgress = 0; render();
+          try{
+            const canvas = await renderPdfPageToCanvas(buf, 1, 3);
+            result = await parseImageOrScannedPdf(canvas, (p)=>{ state.ocrProgress = p; render(); });
+          } finally {
+            state.ocrBusy = false;
+          }
+        }
+      } else {
+        const data = new Uint8Array(buf);
+        const wb = XLSX.read(data, { type:'array' });
+        result = parseWorkbook(wb);
+      }
+
+      if (!result.ok){
+        state.error = 'No he podido leer ese archivo. Si es una foto o un PDF escaneado, asegúrate de que la tabla se vea entera, recta y con buena luz. Si puedes, pide el Excel original y lo intentamos con ese.';
+        state.rawPreview = result.rows ? result.rows.slice(0,20) : null;
+        render();
+        return;
+      }
+      const meta = result.meta || {};
+      const id = planId(meta);
+      const plan = { id, meta, days: result.days, uploadedAt: Date.now(), needsReview: !!result.needsReview };
+      const existingIdx = state.plans.findIndex(p=>p.id===id);
+      if (existingIdx >= 0) state.plans[existingIdx] = plan;
+      else state.plans.push(plan);
+      persistUserData();
+      state.activePlanId = id;
+      state.activeDay = null;
+      state.error = null;
+      state.reviewDismissed = false;
+      render();
+    }catch(err){
+      state.ocrBusy = false;
+      state.error = 'Ha ocurrido un error leyendo el archivo (' + (err && err.message ? err.message : 'error desconocido') + '). Prueba de nuevo o con otro archivo.';
+      render();
+    }
+  }
+
+  if (isImage){
+    run(null);
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e)=> run(e.target.result);
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+/* ---- Main app ---- */
+function renderApp(plan){
+  const wrap = el('div','app');
+
+  // topbar
+  const top = el('div','topbar');
+  const row = el('div','topbar-row');
+  const left = el('div');
+  left.appendChild(el('div','athlete-name', plan.meta.athlete || 'Mi plan'));
+  const metaBits = [];
+  if (plan.meta.jornada) metaBits.push(plan.meta.jornada);
+  left.appendChild(el('div','meta-line', metaBits.join(' · ') || 'Plan de entrenamiento'));
+  row.appendChild(left);
+  if (plan.meta.week !== null && plan.meta.week !== undefined){
+    row.appendChild(el('div','week-chip','Semana ' + plan.meta.week));
+  }
+  top.appendChild(row);
+
+  const actions = el('div','topbar-actions');
+  const histBtn = el('button','tb-btn','Semanas (' + state.plans.length + ')');
+  histBtn.onclick = ()=>{ state.showHistory = true; render(); };
+  actions.appendChild(histBtn);
+  const menuBtn = el('button','tb-btn tb-btn-menu','☰ Menú');
+  menuBtn.onclick = ()=>{ state.showMenu = true; render(); };
+  actions.appendChild(menuBtn);
+  top.appendChild(actions);
+  wrap.appendChild(top);
+
+  // plate row
+  const plateRow = el('div','plate-row');
+  const tonnages = DAY_ORDER.filter(d=>plan.days[d]).map(d=>tonnage(plan.days[d]));
+  const maxT = Math.max(1, ...tonnages);
+  const minSize = 44, maxSize = 74;
+
+  DAY_ORDER.forEach(d=>{
+    if (!plan.days[d]) return;
+    const entries = plan.days[d];
+    const isRestOnly = entries.length && entries.every(e=>e.type==='rest');
+    const t = tonnage(entries);
+    const size = isRestOnly ? 44 : Math.round(minSize + (maxSize-minSize) * (t/maxT));
+
+    const btn = el('button','plate-wrap' + (state.activeDay===d ? ' active':''));
+    const plate = el('div','plate');
+    plate.style.width = size+'px';
+    plate.style.height = size+'px';
+    plate.style.fontSize = (size>60? 17:14)+'px';
+
+    let color = '#3a3c46';
+    if (isRestOnly) color = 'var(--rest)';
+    else if (entries.some(e=>e.type==='note')) color = 'var(--red)';
+    else color = ['var(--blue)','var(--yellow)','var(--purple)','var(--red)'][d.length % 4] ;
+    // stable color by day letter for consistency
+    const palette = { L:'var(--red)', M:'var(--rest)', X:'var(--blue)', J:'var(--yellow)', V:'var(--rest)', S:'var(--purple)' };
+    plate.style.background = isRestOnly ? 'var(--rest)' : (palette[d] || 'var(--blue)');
+    plate.style.color = (d==='J') ? '#26210a' : '#f4f1ea';
+    plate.textContent = d;
+
+    // progress ring based on checked SETS (not just exercises)
+    const { totalSets, checkedSets } = dayStats(plan, d);
+    if (totalSets>0 && checkedSets>0){
+      plate.style.boxShadow = `inset 0 0 0 3px rgba(244,241,234,${0.15+0.55*(checkedSets/totalSets)})`;
+    }
+
+    btn.appendChild(plate);
+    btn.appendChild(el('div','plate-label', DAY_NAMES[d].slice(0,3)));
+    btn.onclick = ()=>{ state.activeDay = d; render(); };
+    plateRow.appendChild(btn);
+  });
+  wrap.appendChild(plateRow);
+
+  // day section
+  const section = el('div','day-section');
+  const entries = plan.days[state.activeDay] || [];
+  const heading = el('div','day-heading');
+  heading.style.alignItems = 'center';
+  const headLeft = el('div');
+  headLeft.appendChild(el('h2', null, DAY_NAMES[state.activeDay]));
+  const exCount = entries.filter(e=>e.type==='exercise').length;
+  headLeft.appendChild(el('div','day-count', exCount ? (exCount + (exCount===1?' ejercicio':' ejercicios')) : ''));
+  heading.appendChild(headLeft);
+  const nKeyHead = noteKey(plan, state.activeDay);
+  const hasNote = !!state.notes[nKeyHead];
+  const noteBtn = el('button', null, hasNote ? '📝 Nota' : '📝 Añadir nota');
+  noteBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:' + (hasNote?'var(--yellow-deep)':'var(--muted)') + ';font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
+  noteBtn.onclick = ()=>{ state.showDayNote = true; state.dayNoteDraft = null; render(); };
+  heading.appendChild(noteBtn);
+  const dayReportBtn = el('button', null, '🧾 Informe');
+  dayReportBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
+  dayReportBtn.onclick = ()=>{ generateDayReport(plan, state.activeDay); };
+  heading.appendChild(dayReportBtn);
+  section.appendChild(heading);
+
+  if (entries.length === 0){
+    section.appendChild(el('div','empty-day','Sin datos para este día.'));
+  }
+
+  entries.forEach((entry, idx)=>{
+    if (entry.type === 'rest'){
+      section.appendChild(el('div','note-card', 'Descanso'));
+      return;
+    }
+    if (entry.type === 'note'){
+      section.appendChild(el('div','note-card competition', entry.label));
+      return;
+    }
+    section.appendChild(renderExerciseCard(plan, state.activeDay, entry, idx));
+  });
+
+  wrap.appendChild(section);
+
+  // debug
+  const dbgToggle = el('div','debug-toggle');
+  const dbgBtn = document.createElement('button');
+  dbgBtn.textContent = state.showDebug ? 'Ocultar datos sin procesar' : '¿Algo no cuadra? Ver datos leídos del archivo';
+  dbgBtn.onclick = ()=>{ state.showDebug = !state.showDebug; render(); };
+  dbgToggle.appendChild(dbgBtn);
+  wrap.appendChild(dbgToggle);
+  if (state.showDebug){
+    const panel = el('div','debug-panel');
+    panel.textContent = JSON.stringify(plan.days, null, 2);
+    wrap.appendChild(panel);
+  }
+
+  return wrap;
+}
+
+function renderExerciseCard(plan, day, entry, idx){
+  const card = el('div','ex-card');
+  const top = el('div','ex-top');
+  top.appendChild(el('div','ex-code', String(entry.code)));
+  const info = el('div','ex-info');
+  const nameText = entry.name || ('Código ' + entry.code + ' (sin identificar)');
+  info.appendChild(el('div','ex-name' + (entry.name?'':' unknown'), nameText));
+  const okCount = entry.sets.filter((s,si)=>state.checks[checkKey(plan,day,idx,si)]==='ok').length;
+  const badCount = entry.sets.filter((s,si)=>state.checks[checkKey(plan,day,idx,si)]==='bad').length;
+  const subBits = [entry.sets.length + (entry.sets.length===1? ' peso':' pesos')];
+  if (okCount || badCount) subBits.push(okCount+' bien'+(badCount? ', '+badCount+' mal':''));
+  info.appendChild(el('div','ex-sub', subBits.join(' · ')));
+  top.appendChild(info);
+  const entryKey = day + '|' + idx;
+  const delBtn = el('button', null, '🗑');
+  delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;font-size:14px;';
+  delBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteExercise = entryKey; render(); };
+  top.appendChild(delBtn);
+  card.appendChild(top);
+
+  const chips = el('div','set-chips');
+  entry.sets.forEach((s, si)=>{
+    const status = state.checks[checkKey(plan,day,idx,si)];
+    const chip = el('div','chip' + (status==='ok'?' chip-ok':status==='bad'?' chip-bad':''));
+    const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
+    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay;
+    chip.onclick = (e)=>{ e.stopPropagation(); openFlashcards(day, idx, si); };
+    chips.appendChild(chip);
+  });
+  card.appendChild(chips);
+
+  if (state.confirmDeleteExercise === entryKey){
+    const confirmBar = el('div');
+    confirmBar.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px;background:var(--surface-2);border-radius:10px;';
+    const warnTxt = el('span', null, '¿Borrar este ejercicio y sus marcas?');
+    warnTxt.style.cssText = 'font-size:12.5px;color:var(--chalk);flex:1;';
+    confirmBar.appendChild(warnTxt);
+    const yesBtn = el('button', null, 'Sí, borrar');
+    yesBtn.style.cssText = 'background:var(--red);border:none;color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+    yesBtn.onclick = (e)=>{
+      e.stopPropagation();
+      deleteExerciseEntry(plan, day, idx);
+      state.confirmDeleteExercise = null;
+      render();
+    };
+    const noBtn = el('button', null, 'No');
+    noBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+    noBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteExercise = null; render(); };
+    confirmBar.appendChild(yesBtn); confirmBar.appendChild(noBtn);
+    card.appendChild(confirmBar);
+  } else {
+    const hint = el('div','ex-hint','Toca un peso para marcarlo · tarjetas ▸');
+    card.appendChild(hint);
+  }
+
+  // -- Vídeos del ejercicio (análisis de técnica) --
+  const videoKey = day + '|' + idx;
+  if (!state.exerciseVideos[videoKey]) state.exerciseVideos[videoKey] = [];
+  const videos = state.exerciseVideos[videoKey];
+
+  const videoSection = el('div');
+  videoSection.style.cssText = 'margin-top:14px;padding-top:14px;border-top:1px solid var(--border);';
+  videoSection.onclick = (e)=> e.stopPropagation();
+
+  const videoHeading = el('div');
+  videoHeading.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;';
+  const vTitle = el('div', null, '🎥 Vídeos' + (videos.length ? ' (' + videos.length + ')' : ''));
+  vTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.02em;color:var(--muted);';
+  videoHeading.appendChild(vTitle);
+
+  const addVideoLabel = document.createElement('label');
+  addVideoLabel.textContent = '+ Añadir vídeo';
+  addVideoLabel.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-weight:600;font-size:11px;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;';
+  const videoInput = document.createElement('input');
+  videoInput.type = 'file'; videoInput.accept = 'video/*'; videoInput.multiple = true; videoInput.style.display = 'none';
+  videoInput.addEventListener('change', (e)=>{
+    Array.from(e.target.files).forEach(file=>{
+      const url = URL.createObjectURL(file);
+      const looksLikeHevcMov = /\.mov$/i.test(file.name) || file.type === 'video/quicktime';
+      videos.push({ id: 'v'+Date.now()+Math.random().toString(36).slice(2,6), name:file.name, url, analysis:null, formatWarning: looksLikeHevcMov });
+    });
+    render();
+  });
+  addVideoLabel.appendChild(videoInput);
+  videoHeading.appendChild(addVideoLabel);
+  videoSection.appendChild(videoHeading);
+
+  if (!videos.length){
+    const emptyHint = el('div','ex-hint','Sube el vídeo de una serie para revisarlo o pedir feedback de técnica.');
+    videoSection.appendChild(emptyHint);
+  } else {
+    videos.forEach(v=>{
+      const vCard = el('div');
+      vCard.style.cssText = 'background:var(--surface-2);border-radius:12px;padding:10px;margin-bottom:10px;';
+
+      const vidEl = document.createElement('video');
+      vidEl.src = v.url; vidEl.controls = true; vidEl.playsInline = true;
+      vidEl.style.cssText = 'width:100%;border-radius:8px;display:block;background:#000;';
+      vCard.appendChild(vidEl);
+
+      if (v.formatWarning){
+        const warn = el('div');
+        warn.style.cssText = 'margin-top:8px;font-size:12px;line-height:1.5;color:var(--yellow-deep);background:var(--surface);border:1px solid var(--surface-3);border-radius:8px;padding:8px 10px;';
+        warn.textContent = '⚠️ Este .MOV puede estar grabado en HEVC de alta eficiencia, que este visor no puede leer. En el iPhone: Ajustes → Cámara → Formatos → "Más compatible" antes de grabar, o conviértelo a .mp4 (H.264) antes de subirlo.';
+        vCard.appendChild(warn);
+      }
+
+      const vActions = el('div');
+      vActions.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+      const analyzing = !!(v.analysis && v.analysis.loading);
+      const analyzeBtn = el('button', null, analyzing ? 'Analizando…' : '🔎 Analizar con IA');
+      analyzeBtn.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--surface-3);color:var(--yellow-deep);font-family:Inter,sans-serif;font-weight:600;font-size:12px;padding:9px 0;border-radius:8px;cursor:pointer;';
+      if (analyzing) analyzeBtn.disabled = true;
+      analyzeBtn.onclick = ()=>{ analyzeVideo(day, idx, v.id); };
+      const delVBtn = el('button', null, '🗑');
+      delVBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:38px;border-radius:8px;cursor:pointer;';
+      delVBtn.onclick = ()=>{
+        URL.revokeObjectURL(v.url);
+        state.exerciseVideos[videoKey] = videos.filter(x=>x.id!==v.id);
+        render();
+      };
+      vActions.appendChild(analyzeBtn); vActions.appendChild(delVBtn);
+      vCard.appendChild(vActions);
+
+      if (v.analysis){
+        if (v.analysis.loading){
+          const l = el('div','ex-hint','Extrayendo fotogramas y analizando…');
+          l.style.marginTop = '8px';
+          vCard.appendChild(l);
+        } else if (v.analysis.error){
+          const e2 = el('div', null, v.analysis.error);
+          e2.style.cssText = 'margin-top:8px;color:var(--red);font-size:12.5px;line-height:1.4;';
+          vCard.appendChild(e2);
+        } else if (v.analysis.text){
+          const t = el('div', null, v.analysis.text);
+          t.style.cssText = 'margin-top:8px;font-size:13px;line-height:1.5;color:var(--chalk);';
+          vCard.appendChild(t);
+        }
+      }
+      videoSection.appendChild(vCard);
+    });
+  }
+  card.appendChild(videoSection);
+
+  card.onclick = ()=>{
+    if (state.confirmDeleteExercise === entryKey) return;
+    const firstUnmarked = entry.sets.findIndex((s,si)=>!state.checks[checkKey(plan,day,idx,si)]);
+    openFlashcards(day, idx, firstUnmarked>=0 ? firstUnmarked : 0);
+  };
+
+  return card;
+}
+
+// Borra un peso (serie) concreto de un ejercicio y reindexa sus marcas.
+function deleteSetFromEntry(plan, day, exIdx, setIdx){
+  const entry = plan.days[day][exIdx];
+  entry.sets.splice(setIdx, 1);
+  const prefix = plan.id + '|' + day + '|' + exIdx + '|';
+  const newChecks = {};
+  Object.keys(state.checks).forEach(k=>{
+    if (k.startsWith(prefix)){
+      const oldSetIdx = parseInt(k.slice(prefix.length), 10);
+      if (oldSetIdx === setIdx) return;
+      const newSetIdx = oldSetIdx > setIdx ? oldSetIdx-1 : oldSetIdx;
+      newChecks[prefix + newSetIdx] = state.checks[k];
+    } else {
+      newChecks[k] = state.checks[k];
+    }
+  });
+  state.checks = newChecks;
+  persistUserData();
+}
+
+/* ---- Flashcard viewer ---- */
+function openFlashcards(day, exIdx, cardIdx){
+  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null };
+  render();
+}
+
+function renderFlashcardOverlay(plan){
+  const { day, exIdx } = state.flashcard;
+  const entry = plan.days[day][exIdx];
+  const totalCards = entry.sets.length + 1; // + final "what next" card
+  let cardIdx = Math.max(0, Math.min(state.flashcard.cardIdx, totalCards-1));
+  state.flashcard.cardIdx = cardIdx;
+  const isFinal = cardIdx === entry.sets.length;
+  const dirClass = state.flashcard.dir==='next' ? ' dir-next' : state.flashcard.dir==='prev' ? ' dir-prev' : '';
+
+  const overlay = el('div','overlay fc-overlay');
+  overlay.style.cssText = 'align-items:center;';
+  const closeOnBg = (e)=>{ if (e.target===overlay){ state.flashcard=null; state.newWeightDraft=null; render(); } };
+  overlay.onclick = closeOnBg;
+
+  const wrap = el('div','fc-wrap');
+
+  const topBar = el('div','fc-top');
+  const titleWrap = el('div');
+  titleWrap.appendChild(el('div','fc-name', entry.name || ('Código '+entry.code)));
+  titleWrap.appendChild(el('div','fc-progress', (cardIdx+1)+' / '+totalCards));
+  topBar.appendChild(titleWrap);
+  const closeBtn = el('button','fc-close','✕');
+  closeBtn.onclick = ()=>{ state.flashcard=null; state.newWeightDraft=null; render(); };
+  topBar.appendChild(closeBtn);
+  wrap.appendChild(topBar);
+
+  const cardArea = el('div','fc-card-area');
+
+  // navegación con animación de "tarjeta física" que se descarta hacia un lado
+  function goToCard(newIdx, dir){
+    const c = cardArea.querySelector('.fc-card');
+    if (c){
+      c.style.animation = 'none';
+      c.style.transition = 'transform .16s cubic-bezier(.5,0,.85,.4), opacity .16s linear';
+      c.style.transform = dir==='next'
+        ? 'translateX(-170px) translateY(10px) rotate(-14deg) scale(.96)'
+        : 'translateX(170px) translateY(10px) rotate(14deg) scale(.96)';
+      c.style.opacity = '0';
+      setTimeout(()=>{ state.flashcard.dir = dir; state.flashcard.cardIdx = newIdx; render(); }, 130);
+    } else {
+      state.flashcard.dir = dir; state.flashcard.cardIdx = newIdx; render();
+    }
+  }
+
+  let touchStartX = null, touchDX = 0, dragging = false;
+  cardArea.addEventListener('touchstart', e=>{
+    touchStartX = e.touches[0].clientX; touchDX = 0; dragging = true;
+    const c = cardArea.querySelector('.fc-card');
+    if (c){ c.style.animation = 'none'; c.style.transition = 'none'; }
+  }, {passive:true});
+  cardArea.addEventListener('touchmove', e=>{
+    if (!dragging || touchStartX===null) return;
+    touchDX = e.touches[0].clientX - touchStartX;
+    const c = cardArea.querySelector('.fc-card');
+    if (c) c.style.transform = 'translateX('+touchDX+'px) rotate('+(touchDX/14)+'deg)';
+  }, {passive:true});
+  cardArea.addEventListener('touchend', ()=>{
+    dragging = false;
+    touchStartX = null;
+    const dx = touchDX; touchDX = 0;
+    if (Math.abs(dx) < 45){
+      const c = cardArea.querySelector('.fc-card');
+      if (c){ c.style.transition = 'transform .22s cubic-bezier(.2,.8,.3,1)'; c.style.transform = 'translateX(0) rotate(0deg)'; }
+      return;
+    }
+    if (dx < 0 && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
+    else if (dx > 0 && cardIdx > 0) goToCard(cardIdx-1, 'prev');
+    else {
+      const c = cardArea.querySelector('.fc-card');
+      if (c){ c.style.transition = 'transform .22s cubic-bezier(.2,.8,.3,1)'; c.style.transform = 'translateX(0) rotate(0deg)'; }
+    }
+  }, {passive:true});
+
+  if (!isFinal){
+    const s = entry.sets[cardIdx];
+    const key = checkKey(plan, day, exIdx, cardIdx);
+    const status = state.checks[key];
+
+    const card = el('div','fc-card'+dirClass);
+    card.appendChild(el('div','fc-kg', s.kg+' kg'));
+    const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
+    card.appendChild(el('div','fc-setrep', (s.series||'?')+' serie'+((s.series===1)?'':'s')+' × '+repDisplay+' rep'+((s.reps===1)?'':'s')));
+    if (entry.parts && entry.parts.length > 1){
+      const comboHint = el('div');
+      comboHint.style.cssText = 'font-family:Inter,sans-serif;font-size:13px;color:var(--muted);text-align:center;margin-top:-8px;';
+      comboHint.textContent = entry.parts.map((p,i)=>{
+        const n = s.repsParts ? s.repsParts[i] : null;
+        const base = DICT[p.code] || ('Cód. '+p.code);
+        return (n!==null&&n!==undefined ? n+'× ' : '') + base + (p.modifier ? ' ('+p.modifier+')' : '');
+      }).join(' + ');
+      card.appendChild(comboHint);
+    }
+
+    const markRow = el('div','fc-mark-row');
+    const okBtn = el('button','fc-mark ok'+(status==='ok'?' selected':''), '✓ Bien');
+    const badBtn = el('button','fc-mark bad'+(status==='bad'?' selected':''), '✗ Mal');
+    okBtn.onclick = ()=>{
+      const wasOk = status==='ok';
+      state.checks[key] = wasOk ? null : 'ok';
+      if (!state.checks[key]) delete state.checks[key];
+      persistUserData();
+      if (!wasOk && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
+      else render();
+    };
+    badBtn.onclick = ()=>{
+      const wasBad = status==='bad';
+      state.checks[key] = wasBad ? null : 'bad';
+      if (!state.checks[key]) delete state.checks[key];
+      persistUserData();
+      if (!wasBad && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
+      else render();
+    };
+    markRow.appendChild(okBtn); markRow.appendChild(badBtn);
+    card.appendChild(markRow);
+
+    if (state.flashcard.confirmDeleteSetIdx === cardIdx){
+      const confirmRow = el('div');
+      confirmRow.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap;justify-content:center;';
+      const txt = el('span', null, '¿Borrar este peso?');
+      txt.style.cssText = 'font-size:12.5px;color:var(--muted);';
+      const yesBtn = el('button', null, 'Sí, borrar');
+      yesBtn.style.cssText = 'background:var(--red);border:none;color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer;';
+      yesBtn.onclick = ()=>{
+        deleteSetFromEntry(plan, day, exIdx, cardIdx);
+        state.flashcard.confirmDeleteSetIdx = null;
+        state.flashcard.cardIdx = Math.min(cardIdx, entry.sets.length);
+        render();
+      };
+      const noBtn = el('button', null, 'No');
+      noBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer;';
+      noBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = null; render(); };
+      confirmRow.appendChild(txt); confirmRow.appendChild(yesBtn); confirmRow.appendChild(noBtn);
+      card.appendChild(confirmRow);
+    } else {
+      const delSetBtn = el('button', null, '🗑 Borrar este peso');
+      delSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;margin-top:4px;';
+      delSetBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = cardIdx; render(); };
+      card.appendChild(delSetBtn);
+    }
+
+    cardArea.appendChild(card);
+  } else if (state.flashcard.showMemo){
+    const nKey = noteKey(plan, day);
+    const savedNote = normalizeNote(state.notes[nKey]);
+    if (state.flashcard.memoDraft === undefined){
+      state.flashcard.memoDraft = { text: savedNote.text, rpe: savedNote.rpe, feeling: savedNote.feeling };
+    }
+    const draft = state.flashcard.memoDraft;
+    const card = el('div','fc-card fc-final'+dirClass);
+    card.appendChild(el('div','fc-final-title','Notas del entreno'));
+    card.appendChild(el('div','fc-final-sub','Calor, alimentación, cómo has dormido… cualquier cosa que creas que ha influido hoy.'));
+    card.appendChild(feelingSelector(draft.feeling, v=>{ draft.feeling = v; render(); }));
+    card.appendChild(rpeInput(draft.rpe, v=>{ draft.rpe = v; }));
+    const ta = document.createElement('textarea');
+    ta.value = draft.text || '';
+    ta.rows = 4;
+    ta.placeholder = 'Ej. Mucho calor en el gimnasio, dormí poco, comí tarde…';
+    ta.className = 'fc-memo-textarea';
+    ta.addEventListener('input', e=>{ draft.text = e.target.value; });
+    card.appendChild(ta);
+
+    const actions = el('div','fc-final-actions');
+    const skipBtn = el('button','mark-btn','Cerrar sin guardar');
+    skipBtn.onclick = ()=>{ state.flashcard=null; render(); };
+    const saveBtn = el('button','mark-btn ok selected','Guardar nota');
+    saveBtn.onclick = ()=>{
+      const text = ta.value.trim();
+      if (text || draft.rpe!==null || draft.feeling!==null) state.notes[nKey] = { text, rpe: draft.rpe, feeling: draft.feeling };
+      else delete state.notes[nKey];
+      persistUserData();
+      state.flashcard = null;
+      render();
+    };
+    actions.appendChild(skipBtn); actions.appendChild(saveBtn);
+    card.appendChild(actions);
+    cardArea.appendChild(card);
+  } else {
+    const card = el('div','fc-card fc-final'+dirClass);
+    card.appendChild(el('div','fc-final-title','Ejercicio completo'));
+    card.appendChild(el('div','fc-final-sub','¿Subimos de peso o lo dejamos aquí?'));
+
+    if (!state.newWeightDraft){
+      const btnRow = el('div','fc-final-actions');
+      const addBtn = el('button','mark-btn ok selected','+ Nuevo peso');
+      addBtn.onclick = ()=>{
+        const last = entry.sets[entry.sets.length-1] || {kg:null,series:null,reps:null};
+        state.newWeightDraft = { kg:last.kg, series:last.series, reps:last.reps };
+        render();
+      };
+      const doneBtn = el('button','mark-btn','Finalizar');
+      doneBtn.onclick = ()=>{
+        state.flashcard.showMemo = true;
+        state.flashcard.memoDraft = undefined;
+        render();
+      };
+      btnRow.appendChild(addBtn); btnRow.appendChild(doneBtn);
+      card.appendChild(btnRow);
+    } else {
+      const form = el('div','fc-newweight-form');
+      const mk = (label, field, width)=>{
+        const wrapF = el('div','fc-field');
+        wrapF.appendChild(el('div','fc-field-label', label));
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.inputMode='numeric';
+        inp.value = state.newWeightDraft[field] ?? '';
+        inp.style.width = width+'px';
+        inp.className = 'fc-field-input';
+        inp.addEventListener('change', ()=>{
+          const v = inp.value.trim();
+          state.newWeightDraft[field] = v==='' ? null : Number(v.replace(',','.'));
+        });
+        wrapF.appendChild(inp);
+        return wrapF;
+      };
+      form.appendChild(mk('KG','kg',70));
+      form.appendChild(mk('Series','series',60));
+      form.appendChild(mk('Repes','reps',60));
+      card.appendChild(form);
+
+      const confirmRow = el('div','fc-final-actions');
+      const cancelBtn = el('button','mark-btn','Cancelar');
+      cancelBtn.onclick = ()=>{ state.newWeightDraft=null; render(); };
+      const saveBtn = el('button','mark-btn ok selected','Añadir');
+      saveBtn.onclick = ()=>{
+        const nw = state.newWeightDraft;
+        if (nw.kg===null || nw.kg===undefined || isNaN(nw.kg)){ return; }
+        entry.sets.push({ kg:nw.kg, series:nw.series??null, reps:nw.reps??null });
+        persistUserData();
+        state.newWeightDraft = null;
+        state.flashcard.cardIdx = entry.sets.length-1; // jump straight to the new set's card
+        render();
+      };
+      confirmRow.appendChild(cancelBtn); confirmRow.appendChild(saveBtn);
+      card.appendChild(confirmRow);
+    }
+    cardArea.appendChild(card);
+  }
+  wrap.appendChild(cardArea);
+
+  const navRow = el('div','fc-nav');
+  const prevBtn = el('button','fc-nav-btn','‹');
+  prevBtn.disabled = cardIdx===0;
+  prevBtn.onclick = ()=>{ if (cardIdx>0) goToCard(cardIdx-1, 'prev'); };
+  const dots = el('div','fc-dots');
+  for (let i=0;i<totalCards;i++){
+    dots.appendChild(el('div','fc-dot'+(i===cardIdx?' active':'')));
+  }
+  const nextBtn = el('button','fc-nav-btn','›');
+  nextBtn.disabled = cardIdx===totalCards-1;
+  nextBtn.onclick = ()=>{ if (cardIdx<totalCards-1) goToCard(cardIdx+1, 'next'); };
+  navRow.appendChild(prevBtn); navRow.appendChild(dots); navRow.appendChild(nextBtn);
+  wrap.appendChild(navRow);
+
+  overlay.appendChild(wrap);
+  return overlay;
+}
+
+/* ---- Analytics ---- */
+function buildAnalytics(){
+  const byCode = {};
+  const plansSorted = [...state.plans].filter(p=>!p.needsReview).sort((a,b)=>{
+    const wa = typeof a.meta.week === 'number' ? a.meta.week : null;
+    const wb = typeof b.meta.week === 'number' ? b.meta.week : null;
+    if (wa!==null && wb!==null && wa!==wb) return wa-wb;
+    return a.uploadedAt - b.uploadedAt;
+  });
+  plansSorted.forEach(plan=>{
+    const perCodeThisPlan = {};
+    DAY_ORDER.forEach(day=>{
+      const entries = plan.days[day]; if (!entries) return;
+      entries.forEach((entry,exIdx)=>{
+        if (entry.type!=='exercise') return;
+        if (!perCodeThisPlan[entry.code]) perCodeThisPlan[entry.code] = { name: entry.name, kgs:[], ok:0, bad:0 };
+        entry.sets.forEach((s,si)=>{
+          if (s.kg!==null && s.kg!==undefined) perCodeThisPlan[entry.code].kgs.push(s.kg);
+          const status = state.checks[checkKey(plan,day,exIdx,si)];
+          if (status==='ok') perCodeThisPlan[entry.code].ok++;
+          else if (status==='bad') perCodeThisPlan[entry.code].bad++;
+        });
+      });
+    });
+    Object.keys(perCodeThisPlan).forEach(code=>{
+      if (!byCode[code]) byCode[code] = { name: perCodeThisPlan[code].name, points: [] };
+      const c = perCodeThisPlan[code];
+      if (c.kgs.length === 0) return;
+      byCode[code].points.push({
+        label: (plan.meta.week!==null && plan.meta.week!==undefined) ? ('S'+plan.meta.week) : new Date(plan.uploadedAt).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'}),
+        maxKg: Math.max(...c.kgs),
+        ok: c.ok, bad: c.bad
+      });
+    });
+  });
+  return byCode;
+}
+
+function sparklineSVG(points){
+  const width = 280, height = 100, padX = 16, padY = 16;
+  const kgs = points.map(p=>p.maxKg);
+  const min = Math.min(...kgs), max = Math.max(...kgs);
+  const range = (max-min) || 1;
+  const stepX = points.length>1 ? (width-2*padX)/(points.length-1) : 0;
+  const coords = points.map((p,i)=>{
+    const x = padX + i*stepX;
+    const y = height-padY - ((p.maxKg-min)/range)*(height-2*padY);
+    return { x, y, p };
+  });
+  const pathD = coords.map((c,i)=> (i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+  const dots = coords.map(c=>{
+    let color = '#8892a0';
+    if (c.p.ok>0 && c.p.bad===0) color = '#2f7dc4';
+    else if (c.p.bad>0 && c.p.ok===0) color = '#c14a3a';
+    else if (c.p.ok>0 && c.p.bad>0) color = '#c99a2e';
+    return '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="4.5" fill="'+color+'" stroke="#ffffff" stroke-width="1.5"/>';
+  }).join('');
+  const labels = coords.map(c=>
+    '<text x="'+c.x.toFixed(1)+'" y="'+(height-2)+'" font-size="9" fill="#6b7482" text-anchor="middle" font-family="IBM Plex Mono, monospace">'+c.p.label+'</text>'
+  ).join('');
+  return '<svg width="100%" height="'+height+'" viewBox="0 0 '+width+' '+height+'" preserveAspectRatio="xMidYMid meet">'+
+    '<path d="'+pathD+'" fill="none" stroke="#3f6f9f" stroke-width="2.5"/>'+dots+labels+'</svg>';
+}
+
+function renderAnalyticsScreen(){
+  const wrap = el('div','app');
+  const top = el('div','topbar');
+  const row = el('div','topbar-row');
+  const left = el('div');
+  left.appendChild(el('div','athlete-name','Análisis'));
+  left.appendChild(el('div','meta-line','Evolución de peso y sensaciones por ejercicio'));
+  row.appendChild(left);
+  const closeBtn = el('button','tb-btn','✕ Cerrar');
+  closeBtn.onclick = ()=>{ state.showAnalytics=false; render(); };
+  row.appendChild(closeBtn);
+  top.appendChild(row);
+  wrap.appendChild(top);
+
+  const section = el('div','day-section');
+  section.style.paddingTop = '18px';
+
+  const byCode = buildAnalytics();
+  const codes = Object.keys(byCode).sort((a,b)=> byCode[b].points.length - byCode[a].points.length);
+
+  if (codes.length === 0){
+    section.appendChild(el('div','empty-day','Todavía no hay ejercicios marcados. Marca algún peso como bien o mal en tus entrenamientos y aquí verás la evolución.'));
+  }
+
+  codes.forEach(code=>{
+    const data = byCode[code];
+    const card = el('div','ex-card');
+    card.style.cursor = 'default';
+    const top2 = el('div','ex-top');
+    top2.appendChild(el('div','ex-code', code));
+    const info = el('div','ex-info');
+    info.appendChild(el('div','ex-name', data.name || ('Código '+code)));
+    const totalOk = data.points.reduce((a,p)=>a+p.ok,0);
+    const totalBad = data.points.reduce((a,p)=>a+p.bad,0);
+    const totalMarked = totalOk+totalBad;
+    const pct = totalMarked ? Math.round(100*totalOk/totalMarked) : null;
+    info.appendChild(el('div','ex-sub', data.points.length + (data.points.length===1?' semana':' semanas') + (pct!==null ? (' · '+pct+'% bien ('+totalOk+'/'+totalMarked+')') : ' · sin marcar aún')));
+    top2.appendChild(info);
+    card.appendChild(top2);
+
+    if (data.points.length >= 2){
+      const chartWrap = el('div');
+      chartWrap.style.cssText = 'margin:14px 0 4px 0;';
+      chartWrap.innerHTML = sparklineSVG(data.points);
+      card.appendChild(chartWrap);
+      const first = data.points[0].maxKg, last = data.points[data.points.length-1].maxKg;
+      const diff = last-first;
+      const trend = el('div');
+      trend.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12.5px;color:'+(diff>0?'#2f7dc4':diff<0?'#c14a3a':'#7d8794')+';text-align:center;';
+      trend.textContent = first+'kg → '+last+'kg  ('+(diff>0?'+':'')+diff+'kg)';
+      card.appendChild(trend);
+    } else {
+      const single = el('div');
+      single.style.cssText = 'margin-top:10px;font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--muted);text-align:center;';
+      single.textContent = 'Máximo esta semana: ' + data.points[0].maxKg + 'kg';
+      card.appendChild(single);
+      const hint = el('div','ex-hint');
+      hint.style.cssText += 'text-align:center;margin-top:6px;';
+      hint.textContent = 'Necesitas al menos 2 semanas para ver evolución';
+      card.appendChild(hint);
+    }
+
+    section.appendChild(card);
+  });
+
+  wrap.appendChild(section);
+  return wrap;
+}
+
+
+function renderHistorySheet(){
+  const overlay = el('div','overlay');
+  overlay.onclick = (e)=>{ if (e.target===overlay){ state.showHistory=false; state.confirmDeleteId=null; render(); } };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Semanas guardadas'));
+
+  const newBtn = el('button','tb-btn','+ Nueva semana');
+  newBtn.style.cssText = 'width:100%;padding:12px 0;margin-bottom:10px;';
+  newBtn.onclick = ()=>{ state.showHistory=false; state.confirmDeleteId=null; state.activePlanId=null; state.error=null; render(); };
+  sheet.appendChild(newBtn);
+
+  const sorted = [...state.plans].sort((a,b)=>b.uploadedAt-a.uploadedAt);
+  if (sorted.length === 0){
+    sheet.appendChild(el('div','empty-day','Todavía no hay semanas guardadas.'));
+  }
+  sorted.forEach(p=>{
+    const item = el('div','hist-item');
+    const l = el('div');
+    l.style.flex = '1';
+    l.appendChild(el('div','hi-title', (p.meta.athlete||'Plan') + (p.meta.week!==null&&p.meta.week!==undefined ? (' · Semana '+p.meta.week) : '')));
+    l.appendChild(el('div','hi-sub', (p.meta.jornada||'') + ' · subido ' + new Date(p.uploadedAt).toLocaleDateString('es-ES')));
+    l.onclick = ()=>{ state.activePlanId = p.id; state.activeDay=null; state.showHistory=false; state.confirmDeleteId=null; state.reviewDismissed = !p.needsReview; render(); };
+    item.appendChild(l);
+
+    if (state.confirmDeleteId === p.id){
+      const confirmWrap = el('div');
+      confirmWrap.style.cssText = 'display:flex;gap:6px;align-items:center;';
+      const yesBtn = el('button', null, '🗑 Sí');
+      yesBtn.style.cssText = 'background:var(--red);border:none;color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+      yesBtn.onclick = (e)=>{
+        e.stopPropagation();
+        state.plans = state.plans.filter(x=>x.id!==p.id);
+        Object.keys(state.checks).forEach(k=>{ if (k.startsWith(p.id+'|')) delete state.checks[k]; });
+        persistUserData();
+        state.confirmDeleteId = null;
+        if (state.activePlanId === p.id){
+          const remaining = [...state.plans].sort((a,b)=>b.uploadedAt-a.uploadedAt);
+          state.activePlanId = remaining.length ? remaining[0].id : null;
+          state.activeDay = null;
+        }
+        render();
+      };
+      const noBtn = el('button', null, 'No');
+      noBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+      noBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteId=null; render(); };
+      confirmWrap.appendChild(el('span',null,'¿Eliminar?'));
+      confirmWrap.appendChild(yesBtn); confirmWrap.appendChild(noBtn);
+      item.appendChild(confirmWrap);
+    } else {
+      const delBtn = el('button', null, '🗑');
+      delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;font-size:14px;';
+      delBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteId = p.id; render(); };
+      item.appendChild(delBtn);
+    }
+
+    sheet.appendChild(item);
+  });
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = ()=>{ state.showHistory=false; state.confirmDeleteId=null; render(); };
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+/* ---- Selector de ejercicio (código + nombre del diccionario) ---- */
+function dictSelect(selectedCode, onChange){
+  const sel = document.createElement('select');
+  sel.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13px;padding:9px 8px;';
+  const placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = 'Elige ejercicio…';
+  sel.appendChild(placeholder);
+  Object.keys(DICT).map(Number).sort((a,b)=>a-b).forEach(code=>{
+    const opt = document.createElement('option');
+    opt.value = code; opt.textContent = code + ' · ' + DICT[code];
+    if (selectedCode!==null && selectedCode!==undefined && String(selectedCode)===String(code)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', ()=> onChange(sel.value ? parseInt(sel.value,10) : null));
+  return sel;
+}
+
+/* ---- Evolución del RM de un ejercicio a lo largo del tiempo ---- */
+function rmHistorySVG(entries){
+  const width = 280, height = 90, padX = 16, padY = 16;
+  const vals = entries.map(e=>e.value);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max-min) || 1;
+  const stepX = entries.length>1 ? (width-2*padX)/(entries.length-1) : 0;
+  const coords = entries.map((e,i)=>{
+    const x = padX + i*stepX;
+    const y = height-padY - ((e.value-min)/range)*(height-2*padY);
+    return { x, y, e };
+  });
+  const pathD = coords.map((c,i)=> (i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+  const dots = coords.map(c=>
+    '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="4" fill="#c99a2e" stroke="#ffffff" stroke-width="1.5"/>'
+  ).join('');
+  const labels = coords.map(c=>
+    '<text x="'+c.x.toFixed(1)+'" y="'+(height-2)+'" font-size="9" fill="#6b7482" text-anchor="middle" font-family="IBM Plex Mono, monospace">'+new Date(c.e.date).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})+'</text>'
+  ).join('');
+  return '<svg width="100%" height="'+height+'" viewBox="0 0 '+width+' '+height+'" preserveAspectRatio="xMidYMid meet">'+
+    '<path d="'+pathD+'" fill="none" stroke="#c99a2e" stroke-width="2.5"/>'+dots+labels+'</svg>';
+}
+
+/* ---- Evolución de la tensión arterial (sistólica y diastólica) ---- */
+function tensionHistorySVG(entries){
+  const width = 280, height = 100, padX = 16, padY = 16;
+  const allVals = entries.flatMap(e=>[e.sistolica, e.diastolica]);
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const range = (max-min) || 1;
+  const stepX = entries.length>1 ? (width-2*padX)/(entries.length-1) : 0;
+  const coordsFor = (field)=> entries.map((e,i)=>{
+    const x = padX + i*stepX;
+    const y = height-padY - ((e[field]-min)/range)*(height-2*padY);
+    return { x, y };
+  });
+  const sysC = coordsFor('sistolica'), diaC = coordsFor('diastolica');
+  const pathFor = (coords)=> coords.map((c,i)=> (i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+  const dotsFor = (coords, color)=> coords.map(c=>
+    '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="3.5" fill="'+color+'" stroke="#ffffff" stroke-width="1.3"/>'
+  ).join('');
+  const labels = sysC.map((c,i)=>
+    '<text x="'+c.x.toFixed(1)+'" y="'+(height-2)+'" font-size="9" fill="#6b7482" text-anchor="middle" font-family="IBM Plex Mono, monospace">'+new Date(entries[i].date).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})+'</text>'
+  ).join('');
+  return '<svg width="100%" height="'+height+'" viewBox="0 0 '+width+' '+height+'" preserveAspectRatio="xMidYMid meet">'+
+    '<path d="'+pathFor(sysC)+'" fill="none" stroke="#c14a3a" stroke-width="2.2"/>'+
+    '<path d="'+pathFor(diaC)+'" fill="none" stroke="#3f6f9f" stroke-width="2.2"/>'+
+    dotsFor(sysC,'#c14a3a') + dotsFor(diaC,'#3f6f9f') + labels + '</svg>';
+}
+
+/* ---- Regresión lineal simple, para proyectar la evolución del RM ---- */
+function linearRegression(points){
+  const n = points.length;
+  if (n < 2) return null;
+  const sumX = points.reduce((a,p)=>a+p.x,0);
+  const sumY = points.reduce((a,p)=>a+p.y,0);
+  const sumXY = points.reduce((a,p)=>a+p.x*p.y,0);
+  const sumXX = points.reduce((a,p)=>a+p.x*p.x,0);
+  const denom = (n*sumXX - sumX*sumX);
+  if (denom === 0) return null;
+  const slope = (n*sumXY - sumX*sumY) / denom;
+  const intercept = (sumY - slope*sumX) / n;
+  return { slope, intercept };
+}
+
+/* ---- Predicción de cuándo se alcanzará el objetivo de un ejercicio,
+   a partir de la tendencia de los RM registrados ---- */
+function goalProjectionText(u, code){
+  const goal = u.objetivos && u.objetivos.metas ? u.objetivos.metas[code] : null;
+  if (!goal) return null;
+  const entries = ((u.rms && u.rms[code]) || []).slice().sort((a,b)=>a.date-b.date);
+  if (entries.length < 2){
+    return { text: 'Registra al menos 2 RM en fechas distintas para poder predecir cuándo llegarás al objetivo.', tone: 'muted' };
+  }
+  const latest = entries[entries.length-1];
+  if (latest.value >= goal){
+    return { text: '🎉 Objetivo ya alcanzado (' + latest.value + 'kg).', tone: 'ok' };
+  }
+  const t0 = entries[0].date;
+  const points = entries.map(e=>({ x: (e.date-t0)/86400000, y: e.value }));
+  const reg = linearRegression(points);
+  if (!reg || reg.slope <= 0.001){
+    return { text: 'Con la tendencia actual entre tus registros, el peso no está subiendo — te costará llegar al objetivo si no cambia el ritmo.', tone: 'warn' };
+  }
+  const xTargetDays = (goal - reg.intercept) / reg.slope;
+  const targetTimestamp = t0 + xTargetDays*86400000;
+  const daysFromNow = Math.round((targetTimestamp - Date.now()) / 86400000);
+  if (daysFromNow <= 0){
+    return { text: 'Según tu progreso, deberías estar muy cerca del objetivo ya.', tone: 'ok' };
+  }
+  const targetDate = new Date(Date.now() + daysFromNow*86400000);
+  const weeks = Math.max(1, Math.round(daysFromNow/7));
+  const dateStr = targetDate.toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' });
+  const kgPerWeek = (reg.slope*7).toFixed(2);
+  const confidence = entries.length >= 4 ? '' : ' (estimación con pocos datos — se ajustará con más registros)';
+  return { text: 'A este ritmo (~' + kgPerWeek + ' kg/semana), llegarías a ' + goal + 'kg hacia el ' + dateStr + ' (~' + weeks + (weeks===1?' semana':' semanas') + ')' + confidence + '.', tone: 'ok' };
+}
+
+/* ---- Pesos ya registrados en los entrenos, para poder usarlos como RM ---- */
+function trainingEntriesForCode(code){
+  const out = [];
+  state.plans.forEach(plan=>{
+    DAY_ORDER.forEach(day=>{
+      const dayEntries = plan.days[day]; if (!dayEntries) return;
+      dayEntries.forEach((entry, exIdx)=>{
+        if (entry.type!=='exercise' || entry.code!==code) return;
+        entry.sets.forEach((s, si)=>{
+          if (s.kg===null || s.kg===undefined) return;
+          const status = state.checks[checkKey(plan, day, exIdx, si)];
+          out.push({ kg: s.kg, week: plan.meta && plan.meta.week, uploadedAt: plan.uploadedAt, ok: status==='ok' });
+        });
+      });
+    });
+  });
+  return out;
+}
+
+function trainingMaxEntryForCode(code){
+  const entries = trainingEntriesForCode(code);
+  if (!entries.length) return null;
+  const ok = entries.filter(e=>e.ok);
+  const pool = ok.length ? ok : entries;
+  let best = pool[0];
+  pool.forEach(e=>{ if (e.kg > best.kg) best = e; });
+  return best;
+}
+
+/* ---- Barras comparando el RM entre distintos ejercicios del mismo deportista ---- */
+function exerciseCompareBars(){
+  const u = getActiveUser();
+  const wrap = el('div');
+  const codes = Object.keys(u.rms||{}).filter(c=>u.rms[c] && u.rms[c].length).map(Number);
+  if (!codes.length){
+    wrap.appendChild(el('div','ex-hint','Registra al menos un RM para ver la comparativa entre ejercicios.'));
+    return wrap;
+  }
+  const rows = codes.map(code=>{
+    const entries = u.rms[code];
+    return { code, name: DICT[code] || ('Código '+code), value: entries[entries.length-1].value };
+  }).sort((a,b)=>b.value-a.value);
+  const maxV = Math.max(...rows.map(r=>r.value));
+  rows.forEach(r=>{
+    const line = el('div'); line.style.cssText = 'margin:10px 0;';
+    const isMain = (r.code===1 || r.code===10);
+    const label = el('div');
+    label.style.cssText = 'display:flex;justify-content:space-between;font-family:IBM Plex Mono,monospace;font-size:12.5px;margin-bottom:4px;' +
+      (isMain ? 'color:var(--chalk);font-weight:700;' : 'color:var(--muted);');
+    label.innerHTML = '<span>'+r.code+' · '+r.name+'</span><span>'+r.value+' kg</span>';
+    const barBg = el('div');
+    barBg.style.cssText = 'height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden;';
+    const bar = el('div');
+    const pct = Math.max(4, Math.round(100*r.value/maxV));
+    bar.style.cssText = 'height:100%;width:'+pct+'%;background:'+(isMain?'var(--yellow-deep)':'var(--surface-3)')+';border-radius:6px;';
+    barBg.appendChild(bar);
+    line.appendChild(label); line.appendChild(barBg);
+    wrap.appendChild(line);
+  });
+  return wrap;
+}
+
+/* ---- Pantalla de perfil: objetivos + RM + comparativa ---- */
+function renderProfileScreen(){
+  const u = getActiveUser();
+  const wrap = el('div','app');
+
+  const top = el('div','topbar');
+  const row = el('div','topbar-row');
+  const left = el('div');
+  left.appendChild(el('div','athlete-name', u.name));
+  left.appendChild(el('div','meta-line','Objetivos y récords personales (RM)'));
+  row.appendChild(left);
+  const closeBtn = el('button','tb-btn','✕ Cerrar');
+  closeBtn.onclick = ()=>{ state.showProfile=false; state.rmForm=null; render(); };
+  row.appendChild(closeBtn);
+  top.appendChild(row);
+  const actions = el('div','topbar-actions');
+  const userBtn = el('button','tb-btn','👤 Cambiar deportista');
+  userBtn.onclick = ()=>{ state.showUsers=true; render(); };
+  actions.appendChild(userBtn);
+  top.appendChild(actions);
+  wrap.appendChild(top);
+
+  const section = el('div','day-section');
+  section.style.paddingTop = '18px';
+
+  /* -- Objetivos (solo arrancada y dos tiempos) -- */
+  if (!u.objetivos) u.objetivos = {};
+  if (!u.objetivos.metas) u.objetivos.metas = {};
+  const objCard = el('div','ex-card');
+  objCard.style.cursor = 'default';
+  objCard.appendChild(el('div','day-count','OBJETIVOS · ARRANCADA Y DOS TIEMPOS'));
+
+  [1,10].forEach(code=>{
+    const row = el('div'); row.style.cssText = 'margin-top:14px;';
+    const lbl = el('div', null, code + ' · ' + DICT[code]);
+    lbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;';
+    row.appendChild(lbl);
+
+    const inputRow = el('div');
+    inputRow.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+    const goalI = reviewMiniInput(u.objetivos.metas[code], 'kg objetivo', 95, v=>{
+      u.objetivos.metas[code] = v===''? null : Number(v.replace(',','.'));
+      saveUsersAsync(users);
+      render();
+    });
+    inputRow.appendChild(goalI);
+
+    const rmEntries = (u.rms && u.rms[code]) || [];
+    const trainMax = trainingMaxEntryForCode(code);
+    let currentVal = null, currentSrc = null;
+    if (rmEntries.length){ currentVal = rmEntries[rmEntries.length-1].value; currentSrc = 'RM'; }
+    else if (trainMax){ currentVal = trainMax.kg; currentSrc = 'entreno'; }
+
+    const status = el('div');
+    status.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12.5px;color:var(--muted);';
+    const goal = u.objetivos.metas[code];
+    if (currentVal!==null){
+      if (goal){
+        const diff = goal - currentVal;
+        status.textContent = 'Actual: ' + currentVal + 'kg (' + currentSrc + ') · faltan ' + (diff>0?diff:0) + 'kg';
+      } else {
+        status.textContent = 'Actual: ' + currentVal + 'kg (' + currentSrc + ')';
+      }
+    } else {
+      status.textContent = 'Sin datos todavía';
+    }
+    inputRow.appendChild(status);
+    row.appendChild(inputRow);
+
+    const proj = goalProjectionText(u, code);
+    if (proj){
+      const projEl = el('div');
+      projEl.style.cssText = 'font-family:Inter,sans-serif;font-size:12.5px;margin-top:6px;line-height:1.4;' +
+        (proj.tone==='ok' ? 'color:var(--ok);font-weight:600;' : proj.tone==='warn' ? 'color:var(--red);' : 'color:var(--muted-2);');
+      projEl.textContent = proj.text;
+      row.appendChild(projEl);
+    }
+
+    objCard.appendChild(row);
+  });
+  section.appendChild(objCard);
+
+  /* -- Peso y tensión -- */
+  if (!u.metrics) u.metrics = [];
+  const metricsHeading = el('div','day-heading');
+  metricsHeading.appendChild(el('h2', null, 'Peso y tensión'));
+  const addMetricBtn = el('button','tb-btn', state.metricForm ? 'Cancelar' : '+ Registrar medida');
+  addMetricBtn.onclick = ()=>{
+    state.metricForm = state.metricForm ? null : { date: new Date().toISOString().slice(0,10), peso:'', sistolica:'', diastolica:'' };
+    render();
+  };
+  metricsHeading.appendChild(addMetricBtn);
+  section.appendChild(metricsHeading);
+
+  if (state.metricForm){
+    const formCard = el('div','ex-card');
+    formCard.style.cursor = 'default';
+    const dateI = document.createElement('input');
+    dateI.type = 'date'; dateI.value = state.metricForm.date;
+    dateI.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:7px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:13px;padding:9px 8px;';
+    dateI.addEventListener('change', (e)=>{ state.metricForm.date = e.target.value; });
+    formCard.appendChild(dateI);
+
+    const lbl1 = el('div','fc-field-label','Peso (kg)'); lbl1.style.cssText='margin-top:12px;margin-bottom:5px;';
+    formCard.appendChild(lbl1);
+    const pesoI = reviewMiniInput(state.metricForm.peso, 'kg', 90, v=>{ state.metricForm.peso = v; });
+    formCard.appendChild(pesoI);
+
+    const lbl2 = el('div','fc-field-label','Tensión (mmHg)'); lbl2.style.cssText='margin-top:12px;margin-bottom:5px;';
+    formCard.appendChild(lbl2);
+    const row3 = el('div'); row3.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const sysI = reviewMiniInput(state.metricForm.sistolica, 'sistólica', 80, v=>{ state.metricForm.sistolica = v; });
+    const slash = el('span', null, '/'); slash.style.color = 'var(--muted-2)';
+    const diaI = reviewMiniInput(state.metricForm.diastolica, 'diastólica', 80, v=>{ state.metricForm.diastolica = v; });
+    row3.appendChild(sysI); row3.appendChild(slash); row3.appendChild(diaI);
+    formCard.appendChild(row3);
+
+    const saveBtn = el('button','mark-btn ok selected','Guardar medida');
+    saveBtn.style.cssText += 'margin-top:14px;width:100%;';
+    saveBtn.onclick = ()=>{
+      const peso = state.metricForm.peso===''? null : Number(String(state.metricForm.peso).replace(',','.'));
+      const sys = state.metricForm.sistolica===''? null : parseInt(state.metricForm.sistolica,10);
+      const dia = state.metricForm.diastolica===''? null : parseInt(state.metricForm.diastolica,10);
+      if ((peso===null||isNaN(peso)) && (sys===null||isNaN(sys)) && (dia===null||isNaN(dia))) return;
+      const ts = (new Date(state.metricForm.date)).getTime() || Date.now();
+      u.metrics.push({
+        date: ts,
+        peso: (peso!==null && !isNaN(peso)) ? peso : null,
+        sistolica: (sys!==null && !isNaN(sys)) ? sys : null,
+        diastolica: (dia!==null && !isNaN(dia)) ? dia : null
+      });
+      u.metrics.sort((a,b)=>a.date-b.date);
+      saveUsersAsync(users);
+      state.metricForm = null;
+      render();
+    };
+    formCard.appendChild(saveBtn);
+    section.appendChild(formCard);
+  }
+
+  const weightEntries = u.metrics.filter(m=>m.peso!==null && m.peso!==undefined).map(m=>({ value:m.peso, date:m.date }));
+  if (weightEntries.length){
+    const wCard = el('div','ex-card');
+    wCard.style.cursor = 'default';
+    wCard.appendChild(el('div','ex-name','Peso corporal'));
+    const latestW = weightEntries[weightEntries.length-1];
+    wCard.appendChild(el('div','ex-sub','Último: ' + latestW.value + ' kg · ' + new Date(latestW.date).toLocaleDateString('es-ES')));
+    if (weightEntries.length >= 2){
+      const cw = el('div'); cw.style.cssText = 'margin:12px 0 4px 0;';
+      cw.innerHTML = rmHistorySVG(weightEntries);
+      wCard.appendChild(cw);
+    }
+    section.appendChild(wCard);
+  }
+
+  const tensionEntries = u.metrics.filter(m=>m.sistolica!==null && m.sistolica!==undefined && m.diastolica!==null && m.diastolica!==undefined);
+  if (tensionEntries.length){
+    const tCard = el('div','ex-card');
+    tCard.style.cursor = 'default';
+    tCard.appendChild(el('div','ex-name','Tensión arterial'));
+    const latestT = tensionEntries[tensionEntries.length-1];
+    tCard.appendChild(el('div','ex-sub','Última: ' + latestT.sistolica + '/' + latestT.diastolica + ' mmHg · ' + new Date(latestT.date).toLocaleDateString('es-ES')));
+    if (tensionEntries.length >= 2){
+      const ct = el('div'); ct.style.cssText = 'margin:12px 0 4px 0;';
+      ct.innerHTML = tensionHistorySVG(tensionEntries);
+      tCard.appendChild(ct);
+      const legend = el('div');
+      legend.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--muted-2);text-align:center;';
+      legend.innerHTML = '<span style="color:#c14a3a;">■</span> Sistólica &nbsp; <span style="color:#3f6f9f;">■</span> Diastólica';
+      tCard.appendChild(legend);
+    }
+    section.appendChild(tCard);
+  }
+
+  if (u.metrics.length){
+    const listCard = el('div','ex-card');
+    listCard.style.cursor = 'default';
+    listCard.appendChild(el('div','day-count','HISTORIAL DE MEDIDAS'));
+    [...u.metrics].sort((a,b)=>b.date-a.date).forEach(m=>{
+      const row = el('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);gap:8px;';
+      const left = el('div');
+      left.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--muted);flex-shrink:0;';
+      left.textContent = new Date(m.date).toLocaleDateString('es-ES');
+      const mid = el('div');
+      mid.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--chalk);flex:1;text-align:right;';
+      const bits = [];
+      if (m.peso!==null && m.peso!==undefined) bits.push(m.peso+' kg');
+      if (m.sistolica!==null && m.sistolica!==undefined && m.diastolica!==null && m.diastolica!==undefined) bits.push(m.sistolica+'/'+m.diastolica);
+      mid.textContent = bits.join(' · ');
+      const delBtn = el('button', null, '✕');
+      delBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-size:14px;cursor:pointer;padding:4px 8px;flex-shrink:0;';
+      delBtn.onclick = ()=>{ u.metrics = u.metrics.filter(x=>x!==m); saveUsersAsync(users); render(); };
+      row.appendChild(left); row.appendChild(mid); row.appendChild(delBtn);
+      listCard.appendChild(row);
+    });
+    section.appendChild(listCard);
+  } else if (!state.metricForm){
+    section.appendChild(el('div','empty-day','Todavía no has registrado peso ni tensión. Usa "+ Registrar medida" para empezar.'));
+  }
+
+  /* -- Mis RM -- */
+  const rmHeading = el('div','day-heading');
+  rmHeading.appendChild(el('h2', null, 'Mis RM'));
+  const addRmBtn = el('button','tb-btn', state.rmForm ? 'Cancelar' : '+ Registrar RM');
+  addRmBtn.onclick = ()=>{
+    state.rmForm = state.rmForm ? null : { code:null, value:'', date: new Date().toISOString().slice(0,10) };
+    render();
+  };
+  rmHeading.appendChild(addRmBtn);
+  section.appendChild(rmHeading);
+
+  if (state.rmForm){
+    const formCard = el('div','ex-card');
+    formCard.style.cursor = 'default';
+    formCard.appendChild(dictSelect(state.rmForm.code, v=>{ state.rmForm.code = v; render(); }));
+
+    if (state.rmForm.code){
+      const tMax = trainingMaxEntryForCode(state.rmForm.code);
+      if (tMax){
+        const hintBtn = el('button', null, '📋 Usar de mis entrenos: ' + tMax.kg + 'kg' +
+          (tMax.week!==null && tMax.week!==undefined ? ' (semana ' + tMax.week + ')' : ''));
+        hintBtn.style.cssText = 'background:none;border:1px dashed var(--surface-3);color:var(--yellow-deep);font-family:Inter,sans-serif;font-weight:600;font-size:12px;padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:10px;width:100%;';
+        hintBtn.onclick = ()=>{
+          state.rmForm.value = String(tMax.kg);
+          state.rmForm.date = new Date(tMax.uploadedAt).toISOString().slice(0,10);
+          render();
+        };
+        formCard.appendChild(hintBtn);
+      } else {
+        const noHint = el('div','ex-hint');
+        noHint.style.cssText = 'margin-top:10px;';
+        noHint.textContent = 'No hay pesos de entreno guardados para este ejercicio todavía — introdúcelo a mano.';
+        formCard.appendChild(noHint);
+      }
+    }
+
+    const row2 = el('div'); row2.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;';
+    const kgI = reviewMiniInput(state.rmForm.value, 'kg', 70, v=>{ state.rmForm.value = v; });
+    const dateI = document.createElement('input');
+    dateI.type = 'date'; dateI.value = state.rmForm.date;
+    dateI.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:7px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:13px;padding:7px 6px;';
+    dateI.addEventListener('change', (e)=>{ state.rmForm.date = e.target.value; });
+    row2.appendChild(kgI); row2.appendChild(dateI);
+    formCard.appendChild(row2);
+    const saveBtn = el('button','mark-btn ok selected','Guardar RM');
+    saveBtn.style.cssText += 'margin-top:12px;width:100%;';
+    saveBtn.onclick = ()=>{
+      const code = state.rmForm.code;
+      const value = Number(String(state.rmForm.value).replace(',','.'));
+      if (!code || !value){ return; }
+      if (!u.rms[code]) u.rms[code] = [];
+      u.rms[code].push({ value, date: (new Date(state.rmForm.date)).getTime() || Date.now() });
+      u.rms[code].sort((a,b)=>a.date-b.date);
+      saveUsersAsync(users);
+      state.rmForm = null;
+      render();
+    };
+    formCard.appendChild(saveBtn);
+    section.appendChild(formCard);
+  }
+
+  const codesWithRm = Object.keys(u.rms||{}).filter(c=>u.rms[c] && u.rms[c].length).map(Number).sort((a,b)=>a-b);
+  if (!codesWithRm.length){
+    section.appendChild(el('div','empty-day','Todavía no has registrado ningún RM. Usa "+ Registrar RM" para empezar.'));
+  }
+  codesWithRm.forEach(code=>{
+    const entries = u.rms[code];
+    const card = el('div','ex-card');
+    card.style.cursor = 'default';
+    const top2 = el('div','ex-top');
+    top2.appendChild(el('div','ex-code', code));
+    const info = el('div','ex-info');
+    info.appendChild(el('div','ex-name', DICT[code] || ('Código '+code)));
+    const latest = entries[entries.length-1];
+    info.appendChild(el('div','ex-sub', 'RM actual: ' + latest.value + ' kg · ' + new Date(latest.date).toLocaleDateString('es-ES')));
+    top2.appendChild(info);
+    const delLatestBtn = el('button', null, '✕');
+    delLatestBtn.title = 'Borrar el último registro';
+    delLatestBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);border-radius:8px;width:34px;height:34px;cursor:pointer;flex-shrink:0;';
+    delLatestBtn.onclick = ()=>{
+      entries.pop();
+      if (!entries.length) delete u.rms[code];
+      saveUsersAsync(users);
+      render();
+    };
+    top2.appendChild(delLatestBtn);
+    card.appendChild(top2);
+    if (entries.length >= 2){
+      const chartWrap = el('div'); chartWrap.style.cssText = 'margin:12px 0 4px 0;';
+      chartWrap.innerHTML = rmHistorySVG(entries);
+      card.appendChild(chartWrap);
+    }
+    section.appendChild(card);
+  });
+
+  /* -- Comparativa entre ejercicios -- */
+  const cmpHeading = el('div','day-heading');
+  cmpHeading.appendChild(el('h2', null, 'Comparativa entre ejercicios'));
+  section.appendChild(cmpHeading);
+  const cmpCard = el('div','ex-card');
+  cmpCard.style.cursor = 'default';
+  cmpCard.appendChild(exerciseCompareBars());
+  section.appendChild(cmpCard);
+
+  wrap.appendChild(section);
+  return wrap;
+}
+
+/* ============== COPIA DE SEGURIDAD ============== */
+// Aunque ahora los datos se guardan en el almacén persistente de Claude
+// (window.storage) en vez de localStorage, sigue sin haber ninguna copia
+// fuera de esta app: si algo fallara con ese almacén, la única red de
+// seguridad real es exportar de vez en cuando este .json con TODOS los
+// usuarios, sus planes, marcas, notas, RM y objetivos.
+
+function anyUserHasData(){
+  return users.some(u=>{
+    const cached = userDataCache[u.id];
+    if (cached && cached.plans && cached.plans.length) return true;
+    if (u.rms && Object.keys(u.rms).length) return true;
+    if (u.metrics && u.metrics.length) return true;
+    return false;
+  });
+}
+
+async function buildBackupObject(){
+  const backup = { version:1, exportedAt: Date.now(), activeUserId: activeUserId, users: users, data: {} };
+  for (const u of users){
+    backup.data[u.id] = userDataCache[u.id] || await loadUserDataAsync(u.id);
+  }
+  return backup;
+}
+
+async function exportBackup(){
+  const backup = await buildBackupObject();
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = 'mi-plan-halterofilia-backup-' + stamp + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  lastBackupTs = Date.now();
+  storageSet(LAST_BACKUP_KEY, String(lastBackupTs));
+}
+
+function importBackupFile(file){
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const backup = JSON.parse(e.target.result);
+      if (!backup || !Array.isArray(backup.users) || !backup.users.length){
+        throw new Error('el archivo no tiene el formato esperado');
+      }
+      for (const u of backup.users){
+        const d = (backup.data && backup.data[u.id]) || { plans:[], checks:{}, notes:{} };
+        await saveUserDataAsync(u.id, { plans: d.plans||[], checks: d.checks||{}, notes: d.notes||{} });
+      }
+      users = backup.users;
+      await saveUsersAsync(users);
+      const restoredActive = (backup.activeUserId && users.find(u=>u.id===backup.activeUserId))
+        ? backup.activeUserId : users[0].id;
+      activeUserId = restoredActive;
+      await saveActiveUserIdAsync(activeUserId);
+      const data = await loadUserDataAsync(activeUserId);
+      state.plans = data.plans;
+      state.checks = data.checks;
+      state.notes = data.notes;
+      const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
+      state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
+      state.activeDay = null;
+      state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
+      state.backupMessage = { text:'Copia restaurada correctamente.', tone:'ok' };
+      render();
+    }catch(err){
+      state.backupMessage = { text:'No he podido leer ese archivo de copia de seguridad (' + (err && err.message ? err.message : 'error desconocido') + ').', tone:'warn' };
+      render();
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ---- Ver/copiar el JSON de la copia a mano (si la descarga falla) ---- */
+function renderBackupTextOverlay(){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.showBackupText = false; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Copia de seguridad (texto)'));
+
+  const hint = el('div','ex-hint');
+  hint.style.cssText = 'margin-bottom:10px;';
+  hint.textContent = 'Copia todo este texto y pégalo en una nota o archivo de texto, guárdalo con extensión .json (por ejemplo "backup.json"), y ese será el archivo que subas después en "Restaurar copia".';
+  sheet.appendChild(hint);
+
+  const jsonText = state.backupText || '';
+  const ta = document.createElement('textarea');
+  ta.value = jsonText;
+  ta.readOnly = true;
+  ta.rows = 10;
+  ta.className = 'fc-memo-textarea';
+  ta.style.fontFamily = "'IBM Plex Mono', monospace";
+  ta.style.fontSize = '11px';
+  ta.onclick = ()=>{ ta.focus(); ta.select(); };
+  sheet.appendChild(ta);
+
+  const copyBtn = el('button','mark-btn ok selected','📋 Copiar todo');
+  copyBtn.style.cssText += 'margin-top:12px;width:100%;';
+  copyBtn.onclick = ()=>{
+    ta.focus(); ta.select();
+    let copied = false;
+    try{
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(jsonText);
+        copied = true;
+      }
+    }catch(e){}
+    if (!copied){
+      try{ document.execCommand('copy'); copied = true; }catch(e){}
+    }
+    copyBtn.textContent = copied ? '✓ Copiado' : 'Selecciona y copia a mano';
+    setTimeout(()=>{ copyBtn.textContent = '📋 Copiar todo'; }, 2000);
+  };
+  sheet.appendChild(copyBtn);
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+/* ---- Menú (hoja inferior con el resto de acciones) ---- */
+function menuItem(icon, label, onClick){
+  const item = el('div','hist-item');
+  item.appendChild(el('div','hi-title', icon + ' ' + label));
+  item.onclick = onClick;
+  return item;
+}
+
+function renderMenuSheet(plan){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.showMenu = false; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Menú'));
+
+  sheet.appendChild(menuItem('📄', '+ Nuevo plan', ()=>{ state.activePlanId=null; state.error=null; state.showMenu=false; render(); }));
+  sheet.appendChild(menuItem('📈', 'Análisis', ()=>{ state.showAnalytics=true; state.showMenu=false; render(); }));
+  sheet.appendChild(menuItem('🎯', 'Perfil', ()=>{ state.showProfile=true; state.showMenu=false; render(); }));
+  sheet.appendChild(menuItem('👤', 'Deportista: ' + getActiveUser().name, ()=>{ state.showUsers=true; state.showMenu=false; render(); }));
+  sheet.appendChild(menuItem('🧾', 'Informe semanal', ()=>{ state.showMenu=false; generateWeekReport(plan); }));
+  sheet.appendChild(menuItem('💾', 'Exportar copia de seguridad', async ()=>{
+    state.showMenu = false;
+    render();
+    await exportBackup();
+    state.showUsers = true;
+    state.backupMessage = { text:'Copia descargada. Guárdala en un sitio seguro (Drive, email, etc.).', tone:'ok' };
+    render();
+  }));
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+/* ---- Hoja de deportistas: cambiar, añadir, renombrar, eliminar ---- */
+function renderUsersSheet(){
+  const overlay = el('div','overlay');
+  overlay.onclick = (e)=>{
+    if (e.target===overlay){
+      state.showUsers=false; state.addingUser=false; state.renamingUserId=null; state.confirmDeleteUserId=null;
+      render();
+    }
+  };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Deportistas'));
+
+  users.forEach(u=>{
+    const item = el('div','hist-item');
+    if (state.renamingUserId === u.id){
+      const row = el('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;flex:1;';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = state.renameDraft;
+      inp.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13.5px;padding:8px 10px;';
+      inp.oninput = (e)=>{ state.renameDraft = e.target.value; };
+      const okBtn = el('button', null, '✓');
+      okBtn.style.cssText = 'background:var(--ok);border:none;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;';
+      okBtn.onclick = (e)=>{
+        e.stopPropagation();
+        const name = state.renameDraft.trim();
+        if (name){ u.name = name; saveUsersAsync(users); }
+        state.renamingUserId = null;
+        render();
+      };
+      row.appendChild(inp); row.appendChild(okBtn);
+      item.appendChild(row);
+    } else {
+      const l = el('div'); l.style.flex = '1';
+      l.appendChild(el('div','hi-title', u.name + (u.id===activeUserId ? ' · activo' : '')));
+      const cachedData = userDataCache[u.id];
+      const planCount = cachedData ? cachedData.plans.length : null;
+      l.appendChild(el('div','hi-sub', planCount===null ? 'cargando…' : (planCount + (planCount===1 ? ' semana guardada' : ' semanas guardadas'))));
+      l.onclick = ()=>{
+        if (u.id!==activeUserId){ switchActiveUser(u.id); }
+        else { state.showUsers=false; render(); }
+      };
+      item.appendChild(l);
+
+      const btns = el('div'); btns.style.cssText = 'display:flex;gap:6px;align-items:center;';
+      if (state.confirmDeleteUserId === u.id){
+        const yesBtn = el('button', null, '🗑 Sí');
+        yesBtn.style.cssText = 'background:var(--red);border:none;color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+        yesBtn.onclick = (e)=>{
+          e.stopPropagation();
+          if (users.length <= 1){ state.confirmDeleteUserId=null; render(); return; }
+          deleteUserDataAsync(u.id);
+          users = users.filter(x=>x.id!==u.id);
+          saveUsersAsync(users);
+          state.confirmDeleteUserId = null;
+          if (activeUserId === u.id){ switchActiveUser(users[0].id); }
+          else { render(); }
+        };
+        const noBtn = el('button', null, 'No');
+        noBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-size:12px;padding:8px 12px;border-radius:8px;cursor:pointer;';
+        noBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteUserId=null; render(); };
+        btns.appendChild(el('span',null,'¿Eliminar?'));
+        btns.appendChild(yesBtn); btns.appendChild(noBtn);
+      } else {
+        const renBtn = el('button', null, '✎');
+        renBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;';
+        renBtn.onclick = (e)=>{ e.stopPropagation(); state.renamingUserId=u.id; state.renameDraft=u.name; render(); };
+        btns.appendChild(renBtn);
+        if (users.length > 1){
+          const delBtn = el('button', null, '🗑');
+          delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;';
+          delBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteUserId=u.id; render(); };
+          btns.appendChild(delBtn);
+        }
+      }
+      item.appendChild(btns);
+    }
+    sheet.appendChild(item);
+  });
+
+  if (state.addingUser){
+    const row = el('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:10px;';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = 'Nombre del deportista';
+    inp.value = state.newUserName;
+    inp.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13.5px;padding:9px 10px;';
+    inp.oninput = (e)=>{ state.newUserName = e.target.value; };
+    const okBtn = el('button','tb-btn','Añadir');
+    okBtn.onclick = ()=>{
+      const name = state.newUserName.trim();
+      if (!name) return;
+      const nu = makeUser(name);
+      users.push(nu);
+      saveUsersAsync(users);
+      state.addingUser = false; state.newUserName = '';
+      switchActiveUser(nu.id);
+    };
+    row.appendChild(inp); row.appendChild(okBtn);
+    sheet.appendChild(row);
+  } else {
+    const newBtn = el('button','tb-btn','+ Nuevo deportista');
+    newBtn.style.cssText = 'width:100%;padding:12px 0;margin-top:10px;';
+    newBtn.onclick = ()=>{ state.addingUser = true; state.newUserName=''; render(); };
+    sheet.appendChild(newBtn);
+  }
+
+  const backupSection = el('div');
+  backupSection.style.cssText = 'margin-top:18px;padding-top:16px;border-top:1px solid var(--border);';
+  backupSection.appendChild(el('div','day-count','COPIA DE SEGURIDAD'));
+
+  const backendLine = el('div');
+  const backendOk = storageBackendUsed === 'claude';
+  backendLine.style.cssText = 'font-size:12px;margin-top:8px;padding:8px 10px;border-radius:8px;line-height:1.4;' +
+    (backendOk ? 'background:var(--surface-2);color:var(--muted);' : 'background:var(--surface-2);color:var(--red);');
+  backendLine.textContent = backendOk
+    ? '✓ Almacenamiento persistente de Claude activo.'
+    : '⚠️ No se ha podido usar el almacenamiento persistente de Claude — de momento está guardando solo en este navegador/dispositivo, así que puede no sobrevivir al cerrar la app ni pasar a otros dispositivos. Haz copias con frecuencia.';
+  backupSection.appendChild(backendLine);
+
+  const backupRow = el('div');
+  backupRow.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:10px;';
+  const exportBtn = el('button','tb-btn','⬇️ Exportar copia');
+  exportBtn.style.width = '100%';
+  exportBtn.onclick = async ()=>{
+    exportBtn.textContent = 'Preparando…';
+    await exportBackup();
+    exportBtn.textContent = '⬇️ Exportar copia';
+    state.backupMessage = { text:'Copia descargada. Guárdala en un sitio seguro (Drive, email, etc.).', tone:'ok' };
+    render();
+  };
+  const importLabel = document.createElement('label');
+  importLabel.className = 'tb-btn';
+  importLabel.style.cssText = 'width:100%;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+  importLabel.textContent = '⬆️ Restaurar copia';
+  const importInput = document.createElement('input');
+  importInput.type = 'file'; importInput.accept = 'application/json,.json'; importInput.style.display = 'none';
+  importInput.addEventListener('change', (e)=>{
+    if (e.target.files.length){ state.pendingImportFile = e.target.files[0]; render(); }
+  });
+  importLabel.appendChild(importInput);
+  backupRow.appendChild(exportBtn); backupRow.appendChild(importLabel);
+  backupSection.appendChild(backupRow);
+
+  const viewJsonBtn = el('button', null, '📋 Ver y copiar el JSON (si la descarga no funciona)');
+  viewJsonBtn.style.cssText = 'width:100%;margin-top:8px;background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:11.5px;text-decoration:underline;cursor:pointer;padding:4px 0;';
+  viewJsonBtn.onclick = async ()=>{
+    viewJsonBtn.textContent = 'Preparando…';
+    const backup = await buildBackupObject();
+    state.backupText = JSON.stringify(backup, null, 2);
+    state.showBackupText = true;
+    render();
+  };
+  backupSection.appendChild(viewJsonBtn);
+
+  const backupHint = el('div');
+  backupHint.style.cssText = 'font-size:11.5px;color:var(--muted-2);margin-top:8px;line-height:1.4;';
+  backupHint.textContent = lastBackupTs
+    ? 'Última copia descargada: ' + new Date(lastBackupTs).toLocaleString('es-ES')
+    : 'Los datos se guardan de forma persistente, pero descarga una copia de vez en cuando por si acaso.';
+  backupSection.appendChild(backupHint);
+
+  if (state.pendingImportFile){
+    const confirmWrap = el('div');
+    confirmWrap.style.cssText = 'margin-top:10px;padding:12px;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:10px;';
+    const warnTxt = el('div', null, '⚠️ Restaurar esta copia sustituirá TODOS los datos actuales (deportistas, planes, RM, notas). ¿Continuar?');
+    warnTxt.style.cssText = 'font-size:12.5px;color:var(--chalk);line-height:1.4;';
+    confirmWrap.appendChild(warnTxt);
+    const actRow = el('div'); actRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+    const yesBtn = el('button','mark-btn ok selected','Sí, restaurar');
+    yesBtn.onclick = ()=>{ const f = state.pendingImportFile; state.pendingImportFile = null; importBackupFile(f); };
+    const noBtn = el('button','mark-btn','Cancelar');
+    noBtn.onclick = ()=>{ state.pendingImportFile = null; render(); };
+    actRow.appendChild(yesBtn); actRow.appendChild(noBtn);
+    confirmWrap.appendChild(actRow);
+    backupSection.appendChild(confirmWrap);
+  }
+
+  if (state.backupMessage){
+    const msg = el('div', null, state.backupMessage.text);
+    msg.style.cssText = 'margin-top:10px;font-size:12.5px;line-height:1.4;' + (state.backupMessage.tone==='ok' ? 'color:var(--ok);' : 'color:var(--red);');
+    backupSection.appendChild(msg);
+  }
+  sheet.appendChild(backupSection);
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = ()=>{
+    state.showUsers=false; state.addingUser=false; state.renamingUserId=null; state.confirmDeleteUserId=null; state.backupMessage=null;
+    render();
+  };
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+/* ---- Nota del día (calor, sueño, alimentación…) ---- */
+function renderDayNoteOverlay(plan){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.showDayNote=false; state.dayNoteDraft=null; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Nota de ' + DAY_NAMES[state.activeDay]));
+  const hint = el('div','ex-hint');
+  hint.style.cssText = 'margin-bottom:12px;';
+  hint.textContent = 'Calor, alimentación, cómo has dormido… cualquier cosa que creas que ha influido en el entreno de hoy.';
+  sheet.appendChild(hint);
+
+  const nKey = noteKey(plan, state.activeDay);
+  if (!state.dayNoteDraft){
+    const saved = normalizeNote(state.notes[nKey]);
+    state.dayNoteDraft = { text: saved.text, rpe: saved.rpe, feeling: saved.feeling };
+  }
+  const draft = state.dayNoteDraft;
+
+  sheet.appendChild(feelingSelector(draft.feeling, v=>{ draft.feeling = v; render(); }));
+  sheet.appendChild(rpeInput(draft.rpe, v=>{ draft.rpe = v; }));
+
+  const ta = document.createElement('textarea');
+  ta.value = draft.text || '';
+  ta.rows = 5;
+  ta.placeholder = 'Ej. Mucho calor en el gimnasio, dormí poco, comí tarde…';
+  ta.className = 'fc-memo-textarea';
+  ta.addEventListener('input', e=>{ draft.text = e.target.value; });
+  sheet.appendChild(ta);
+
+  const actions = el('div');
+  actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
+  if (state.notes[nKey]){
+    const delBtn = el('button','tb-btn','Borrar nota');
+    delBtn.style.flex = '1';
+    delBtn.onclick = ()=>{ delete state.notes[nKey]; persistUserData(); close(); };
+    actions.appendChild(delBtn);
+  }
+  const saveBtn = el('button','mark-btn ok selected','Guardar');
+  saveBtn.style.flex = '2';
+  saveBtn.onclick = ()=>{
+    const text = ta.value.trim();
+    if (text || draft.rpe!==null || draft.feeling!==null) state.notes[nKey] = { text, rpe: draft.rpe, feeling: draft.feeling };
+    else delete state.notes[nKey];
+    persistUserData();
+    close();
+  };
+  actions.appendChild(saveBtn);
+  sheet.appendChild(actions);
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+/* ============== INFORMES (día y semana) ==============
+   Usan la API de Claude para sintetizar, en un par de frases, cómo las notas
+   libres del atleta (calor, sueño, alimentación...) pueden haberse
+   relacionado con el entreno. No se guardan: se generan al vuelo cada vez. */
+/* ============== VÍDEOS DE EJERCICIO (análisis de técnica) ==============
+   Los vídeos viven solo en memoria del navegador (URL.createObjectURL), no
+   se guardan en localStorage ni entran en la copia de seguridad: un vídeo
+   pesa demasiado para ese almacenamiento. Al analizar, se extraen unos
+   fotogramas del vídeo y se envían a la API de Claude para un feedback de
+   técnica; el vídeo en sí nunca sale del navegador salvo esos fotogramas. */
+
+function extractVideoFrames(videoUrl, count){
+  return new Promise((resolve, reject)=>{
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    const timeout = setTimeout(()=>{
+      reject(new Error('tiempo de espera agotado leyendo el vídeo'));
+    }, 15000);
+    const finish = (fn, arg)=>{ clearTimeout(timeout); fn(arg); };
+
+    video.addEventListener('error', ()=> finish(reject, new Error('no se pudo leer el archivo de vídeo')));
+
+    function startCapture(duration){
+      if (!isFinite(duration) || duration <= 0){
+        finish(reject, new Error('no se pudo determinar la duración del vídeo'));
+        return;
+      }
+      const times = [];
+      for (let i=1; i<=count; i++) times.push(Math.max(0, Math.min(duration-0.05, duration*i/(count+1))));
+      const canvas = document.createElement('canvas');
+      const frames = [];
+      let idx = 0;
+      function captureNext(){
+        if (idx >= times.length){
+          if (!frames.length){ finish(reject, new Error('no se pudo generar ningún fotograma del vídeo')); return; }
+          finish(resolve, frames);
+          return;
+        }
+        video.currentTime = times[idx];
+      }
+      video.addEventListener('seeked', function onSeeked(){
+        try{
+          const w = video.videoWidth, h = video.videoHeight;
+          if (w && h){
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            frames.push(dataUrl.split(',')[1]);
+          }
+        }catch(e){ /* fotograma no legible: se salta y se sigue con el siguiente */ }
+        idx++;
+        captureNext();
+      });
+      captureNext();
+    }
+
+    video.addEventListener('loadedmetadata', ()=>{
+      const d = video.duration;
+      if (!isFinite(d) || d <= 0){
+        // Algunos vídeos grabados en móvil (sobre todo iPhone) no traen la
+        // duración en los metadatos cuando se cargan desde un blob: hay que
+        // forzar un seek al final para que el navegador la recalcule.
+        video.addEventListener('durationchange', function onDur(){
+          if (isFinite(video.duration) && video.duration > 0){
+            video.removeEventListener('durationchange', onDur);
+            video.currentTime = 0;
+            startCapture(video.duration);
+          }
+        });
+        video.currentTime = 1e7;
+      } else {
+        startCapture(d);
+      }
+    });
+  });
+}
+
+async function analyzeVideo(day, exIdx, videoId){
+  const key = day + '|' + exIdx;
+  const videos = state.exerciseVideos[key] || [];
+  const v = videos.find(x=>x.id===videoId);
+  if (!v) return;
+  v.analysis = { loading:true, text:null, error:null };
+  render();
+  try{
+    const frames = await extractVideoFrames(v.url, 3);
+    if (!frames.length) throw new Error('no se pudieron extraer fotogramas');
+    const content = [{
+      type:'text',
+      text: 'Eres un entrenador de halterofilia analizando la técnica de un levantamiento a partir de estos fotogramas ' +
+        'extraídos de un vídeo, en orden temporal. Da un feedback técnico breve (máximo 6 frases, en español, en prosa, ' +
+        'sin listas ni markdown) sobre postura, trayectoria de la barra, profundidad y cualquier punto de mejora que ' +
+        'puedas apreciar. Si los fotogramas no dejan ver bien el levantamiento, dilo con honestidad.'
+    }];
+    frames.forEach(f=>{
+      content.push({ type:'image', source:{ type:'base64', media_type:'image/jpeg', data:f } });
+    });
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:600, messages:[{ role:'user', content }] })
+    });
+    if (!response.ok){
+      let detail = '';
+      try{ const errBody = await response.json(); detail = errBody && errBody.error && errBody.error.message ? errBody.error.message : ''; }catch(e){}
+      throw new Error('respuesta ' + response.status + (detail ? (' — ' + detail) : ''));
+    }
+    const data = await response.json();
+    const text = (data.content || []).map(b=>b.text || '').join('\n').trim();
+    v.analysis = { loading:false, text: text || 'No he podido analizar el vídeo.', error:null };
+  }catch(err){
+    const detail = err && err.message ? err.message : 'error desconocido';
+    let msg = 'No se ha podido analizar el vídeo (' + detail + ').';
+    if (detail.indexOf('leer el archivo de vídeo') !== -1 || detail.indexOf('duración') !== -1){
+      msg += ' Es probable que sea un .MOV grabado en HEVC de alta eficiencia (típico de iPhone), que este visor no puede decodificar. Prueba a grabar con Ajustes → Cámara → Formatos → "Más compatible", o convierte el vídeo a .mp4 (H.264) antes de subirlo.';
+    } else {
+      msg += ' Inténtalo de nuevo.';
+    }
+    v.analysis = { loading:false, text:null, error: msg };
+  }
+  render();
+}
+
+async function callClaudeAPI(promptText){
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 700,
+      messages: [{ role:'user', content: promptText }]
+    })
+  });
+  if (!response.ok) throw new Error('respuesta ' + response.status);
+  const data = await response.json();
+  const text = (data.content || []).map(b=>b.text || '').join('\n').trim();
+  if (!text) throw new Error('respuesta vacía');
+  return text;
+}
+
+/* ============== INFORMES (día y semana) ==============
+   Pensados como el parte que un entrenador necesitaría de un atleta que no
+   entrena con él: primero los datos concretos (qué se hizo, cuánto, cómo
+   fue marcado, RPE, sensación), calculados al momento sin depender de la
+   IA; después un memo breve generado por la IA que conecta esos datos con
+   las notas libres. Todo pensado para poder copiarse o enviarse por email. */
+
+function dayReportData(plan, day){
+  const noteObj = normalizeNote(state.notes[noteKey(plan, day)]);
+  const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
+  const exLines = entries.map((e, exIdx)=>{
+    const setsStr = e.sets.map((s,si)=>{
+      const st = state.checks[checkKey(plan, day, exIdx, si)];
+      const mark = st==='ok' ? '✓' : st==='bad' ? '✗' : '·';
+      const reps = s.repsParts ? s.repsParts.join('+') : (s.reps??'?');
+      return s.kg+'kg×'+(s.series||'?')+'x'+reps+mark;
+    }).join('  ');
+    return { name: e.name || ('Código '+e.code), setsStr };
+  });
+  const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
+  const okSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>state.checks[checkKey(plan,day,exIdx,si)]==='ok').length,0);
+  const badSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>state.checks[checkKey(plan,day,exIdx,si)]==='bad').length,0);
+  return {
+    dayName: DAY_NAMES[day],
+    week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
+    athlete: getActiveUser().name,
+    exLines, totalSets, okSets, badSets,
+    completion: totalSets ? Math.round(100*okSets/totalSets) : null,
+    tonnageKg: Math.round(tonnage(plan.days[day])),
+    rpe: noteObj.rpe, feeling: noteObj.feeling, note: noteObj.text
+  };
+}
+
+function dayReportPlainText(data, memoText){
+  const lines = [];
+  lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.week!==null ? ' · Semana '+data.week : ''));
+  lines.push('Atleta: ' + data.athlete);
+  lines.push('');
+  if (data.exLines.length){
+    lines.push('EJERCICIOS:');
+    data.exLines.forEach(l=> lines.push('- ' + l.name + ': ' + l.setsStr));
+  } else {
+    lines.push('EJERCICIOS: sin datos registrados este día.');
+  }
+  lines.push('');
+  lines.push('Series completadas: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : '') + (data.badSets ? ' · ' + data.badSets + ' falladas' : ''));
+  lines.push('Tonelaje del día: ' + data.tonnageKg + ' kg');
+  lines.push('RPE (esfuerzo percibido): ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar'));
+  lines.push('Sensación general: ' + (feelingLabel(data.feeling) || 'sin registrar'));
+  lines.push('Notas del atleta: ' + (data.note || '(sin notas)'));
+  if (memoText){
+    lines.push('');
+    lines.push('RESUMEN:');
+    lines.push(memoText);
+  }
+  return lines.join('\n');
+}
+
+async function generateDayReport(plan, day){
+  const data = dayReportData(plan, day);
+  state.dayReport = { day, planId: plan.id, data, memo: { loading:true, text:null, error:null } };
+  render();
+  try{
+    const exerciseLines = data.exLines.map(l=>'- '+l.name+': '+l.setsStr).join('\n') || '(sin ejercicios registrados)';
+    const prompt =
+      'Eres un entrenador nacional de halterofilia revisando a distancia el entreno de hoy de un atleta que no entrena contigo. ' +
+      'Con estos datos, escribe un memo breve (máximo 3 frases, en español, en prosa, sin listas ni markdown, tono profesional y directo) ' +
+      'que conecte el rendimiento (series completadas, RPE, sensación) con la nota libre del atleta, y señale si hay algo a vigilar. ' +
+      'Si faltan datos relevantes, dilo brevemente y no inventes nada.\n\n' +
+      'Series completadas: ' + data.okSets + '/' + data.totalSets + '\n' +
+      'RPE: ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar') + '\n' +
+      'Sensación: ' + (feelingLabel(data.feeling) || 'sin registrar') + '\n' +
+      'Nota del atleta: ' + (data.note || '(sin nota)') + '\n\n' +
+      'Ejercicios:\n' + exerciseLines;
+    const text = await callClaudeAPI(prompt);
+    state.dayReport.memo = { loading:false, text, error:null };
+  }catch(err){
+    state.dayReport.memo = { loading:false, text:null, error:'No se ha podido generar el memo (sin conexión o fallo de la IA). Los datos de arriba siguen siendo válidos.' };
+  }
+  render();
+}
+
+function weekReportPlainText(plan, perDay, memoText){
+  const lines = [];
+  lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Mi plan'));
+  lines.push('Atleta: ' + getActiveUser().name);
+  lines.push('');
+  perDay.forEach(d=>{
+    lines.push(d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
+      ' · ' + d.tonnageKg + 'kg' +
+      (d.rpe!==null ? ' · RPE '+d.rpe : '') +
+      (d.feeling ? ' · ' + feelingLabel(d.feeling) : '') +
+      (d.note ? ' · nota: "' + d.note + '"' : ''));
+  });
+  if (memoText){
+    lines.push('');
+    lines.push('RESUMEN DE LA SEMANA:');
+    lines.push(memoText);
+  }
+  return lines.join('\n');
+}
+
+async function generateWeekReport(plan){
+  const perDay = DAY_ORDER.filter(d=>plan.days[d] && plan.days[d].length).map(d=>dayReportData(plan, d));
+  state.weekReport = { planId: plan.id, perDay, memo: { loading:true, text:null, error:null } };
+  render();
+  try{
+    const lines = perDay.map(d=>
+      d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series, ' + d.tonnageKg + 'kg' +
+      (d.rpe!==null ? ', RPE '+d.rpe : '') + (d.feeling ? ', sensación '+feelingLabel(d.feeling) : '') +
+      (d.note ? ' — nota: "' + d.note + '"' : ' — sin nota')
+    ).join('\n');
+    const prompt =
+      'Eres un entrenador nacional de halterofilia revisando a distancia la semana de entreno de un atleta que no entrena ' +
+      'contigo. Con este resumen día a día (series completadas, tonelaje, RPE, sensación y notas libres), escribe un informe ' +
+      'breve (máximo 6 frases, en español, en prosa, sin listas ni markdown, tono profesional) destacando patrones relevantes ' +
+      '(cargas, fatiga, constancia, factores externos) y qué vigilarías la semana que viene. Si no hay datos suficientes, dilo brevemente.\n\n' +
+      (lines || '(sin datos esta semana)');
+    const text = await callClaudeAPI(prompt);
+    state.weekReport.memo = { loading:false, text, error:null };
+  }catch(err){
+    state.weekReport.memo = { loading:false, text:null, error:'No se ha podido generar el resumen (sin conexión o fallo de la IA). Los datos de arriba siguen siendo válidos.' };
+  }
+  render();
+}
+
+/* ---- Copiar / compartir un informe (para mandarlo por email, etc.) ---- */
+async function copyReportText(text, btn){
+  let copied = false;
+  try{
+    if (navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); copied = true; }
+  }catch(e){}
+  if (!copied){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      copied = true;
+    }catch(e){}
+  }
+  if (btn){
+    btn.textContent = copied ? '✓ Copiado' : 'No se pudo copiar';
+    setTimeout(()=>{ btn.textContent = '📋 Copiar texto'; }, 2000);
+  }
+}
+async function shareReportText(subject, text){
+  if (navigator.share){
+    try{ await navigator.share({ title: subject, text }); return; }catch(e){ /* cancelado o no soportado */ }
+  }
+  window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text), '_blank');
+}
+
+function reportActionsRow(subject, text){
+  const row = el('div');
+  row.style.cssText = 'display:flex;gap:8px;margin-top:16px;';
+  const copyBtn = el('button','mark-btn ok selected','📋 Copiar texto');
+  copyBtn.style.flex = '1';
+  copyBtn.onclick = ()=> copyReportText(text, copyBtn);
+  const shareBtn = el('button','mark-btn','📤 Enviar / Compartir');
+  shareBtn.style.flex = '1';
+  shareBtn.onclick = ()=> shareReportText(subject, text);
+  row.appendChild(copyBtn); row.appendChild(shareBtn);
+  return row;
+}
+
+function reportDataBlock(data){
+  const wrap = el('div');
+  wrap.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12.5px;line-height:1.7;color:var(--chalk);background:var(--surface-2);border-radius:10px;padding:12px 14px;';
+  const line = (label, value)=>{
+    const l = el('div');
+    l.innerHTML = '<span style="color:var(--muted-2);">'+label+'</span> ' + value;
+    return l;
+  };
+  if (data.exLines.length){
+    data.exLines.forEach(l=> wrap.appendChild(line('•', '<b>'+l.name+'</b>: '+l.setsStr)));
+    wrap.appendChild(document.createElement('hr')).style.cssText = 'border:none;border-top:1px solid var(--surface-3);margin:8px 0;';
+  } else {
+    wrap.appendChild(line('•', 'Sin ejercicios registrados este día.'));
+  }
+  wrap.appendChild(line('Series:', data.okSets+'/'+data.totalSets + (data.completion!==null?' ('+data.completion+'%)':'') + (data.badSets?' · '+data.badSets+' malas':'')));
+  wrap.appendChild(line('Tonelaje:', data.tonnageKg+' kg'));
+  wrap.appendChild(line('RPE:', data.rpe!==null ? data.rpe+'/10' : '—'));
+  wrap.appendChild(line('Sensación:', feelingLabel(data.feeling) || '—'));
+  wrap.appendChild(line('Nota:', data.note || '—'));
+  return wrap;
+}
+
+function renderDayReportOverlay(){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.dayReport = null; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  const r = state.dayReport;
+  sheet.appendChild(el('h3','Informe de ' + DAY_NAMES[r.day]));
+  sheet.appendChild(reportDataBlock(r.data));
+
+  const memoWrap = el('div');
+  memoWrap.style.cssText = 'margin-top:14px;';
+  if (r.memo.loading){
+    memoWrap.appendChild(el('div','ex-hint','Generando memo…'));
+  } else if (r.memo.error){
+    const err = el('div', null, r.memo.error);
+    err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
+    memoWrap.appendChild(err);
+  } else if (r.memo.text){
+    memoWrap.appendChild(el('div','day-count','RESUMEN'));
+    const txt = el('div', null, r.memo.text);
+    txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
+    memoWrap.appendChild(txt);
+  }
+  sheet.appendChild(memoWrap);
+
+  const subject = 'Entreno ' + DAY_NAMES[r.day] + (r.data.week!==null?' · Semana '+r.data.week:'') + ' — ' + r.data.athlete;
+  sheet.appendChild(reportActionsRow(subject, dayReportPlainText(r.data, r.memo.text)));
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+function renderWeekReportOverlay(plan){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.weekReport = null; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  const r = state.weekReport;
+  sheet.appendChild(el('h3','Informe de la semana'));
+
+  r.perDay.forEach(d=>{
+    const dCard = el('div');
+    dCard.style.cssText = 'margin-bottom:10px;';
+    dCard.appendChild(el('div','day-count', d.dayName.toUpperCase()));
+    dCard.appendChild(reportDataBlock(d));
+    sheet.appendChild(dCard);
+  });
+  if (!r.perDay.length){
+    sheet.appendChild(el('div','empty-day','Sin datos esta semana.'));
+  }
+
+  const memoWrap = el('div');
+  memoWrap.style.cssText = 'margin-top:6px;';
+  if (r.memo.loading){
+    memoWrap.appendChild(el('div','ex-hint','Generando resumen…'));
+  } else if (r.memo.error){
+    const err = el('div', null, r.memo.error);
+    err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
+    memoWrap.appendChild(err);
+  } else if (r.memo.text){
+    memoWrap.appendChild(el('div','day-count','RESUMEN DE LA SEMANA'));
+    const txt = el('div', null, r.memo.text);
+    txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
+    memoWrap.appendChild(txt);
+  }
+  sheet.appendChild(memoWrap);
+
+  const subject = 'Informe semanal' + (plan.meta && plan.meta.week!=null ? ' · Semana '+plan.meta.week : '') + ' — ' + getActiveUser().name;
+  sheet.appendChild(reportActionsRow(subject, weekReportPlainText(plan, r.perDay, r.memo.text)));
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
+initApp();
+</script>
+</body>
+</html>
