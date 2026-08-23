@@ -3943,29 +3943,12 @@ async function analyzeVideo(day, exIdx, videoId){
   render();
 }
 
-async function callClaudeAPI(promptText){
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 700,
-      messages: [{ role:'user', content: promptText }]
-    })
-  });
-  if (!response.ok) throw new Error('respuesta ' + response.status);
-  const data = await response.json();
-  const text = (data.content || []).map(b=>b.text || '').join('\n').trim();
-  if (!text) throw new Error('respuesta vacía');
-  return text;
-}
-
 /* ============== INFORMES (día y semana) ==============
    Pensados como el parte que un entrenador necesitaría de un atleta que no
-   entrena con él: primero los datos concretos (qué se hizo, cuánto, cómo
-   fue marcado, RPE, sensación), calculados al momento sin depender de la
-   IA; después un memo breve generado por la IA que conecta esos datos con
-   las notas libres. Todo pensado para poder copiarse o enviarse por email. */
+   entrena con él: datos concretos (qué se hizo, cuánto, cómo fue marcado,
+   RPE, sensación), calculados al momento, más una frase-resumen generada
+   localmente (sin depender de ningún servidor de IA, para que funcione
+   igual de bien alojado fuera del entorno de Claude). */
 
 const FEELING_ORDER = ['mal','regular','bien','muybien'];
 function worstFeeling(list){
@@ -4024,6 +4007,35 @@ function dayReportData(plan, day){
   };
 }
 
+// Resumen de una línea, generado localmente a partir de los datos (sin IA).
+function localDaySummary(data){
+  if (data.totalSets === 0 && data.rpe===null && data.feeling===null && !data.note) return null;
+  const bits = [];
+  if (data.completion !== null){
+    bits.push(data.completion===100 ? 'entreno completado al 100%' : ('completó ' + data.completion + '% de las series (' + data.okSets + '/' + data.totalSets + ')'));
+  }
+  if (data.badSets) bits.push(data.badSets + (data.badSets===1?' serie fallada':' series falladas'));
+  if (data.rpe !== null) bits.push('RPE ' + data.rpe + '/10');
+  if (data.feeling) bits.push('sensación ' + (feelingLabel(data.feeling)||'').replace(/^[^\s]+\s/,'').toLowerCase());
+  let summary = bits.length ? (bits[0].charAt(0).toUpperCase()+bits[0].slice(1) + (bits.length>1 ? ', ' + bits.slice(1).join(', ') : '') + '.') : '';
+  if (data.note) summary += (summary?' ':'') + 'Nota: "' + data.note.split('\n')[0] + (data.note.includes('\n')?'…':'') + '"';
+  return summary || null;
+}
+
+function localWeekSummary(perDay){
+  const withData = perDay.filter(d=>d.totalSets>0);
+  if (!withData.length) return null;
+  const totalOk = withData.reduce((a,d)=>a+d.okSets,0);
+  const totalSets = withData.reduce((a,d)=>a+d.totalSets,0);
+  const totalTon = withData.reduce((a,d)=>a+d.tonnageKg,0);
+  const rpes = withData.map(d=>d.rpe).filter(r=>r!==null);
+  const avgRpe = rpes.length ? Math.round(rpes.reduce((a,b)=>a+b,0)/rpes.length) : null;
+  const worstDays = withData.filter(d=>d.feeling==='mal' || (d.rpe!==null && d.rpe>=9));
+  let summary = withData.length + ' días entrenados, ' + totalOk + '/' + totalSets + ' series completadas (' + Math.round(100*totalOk/totalSets) + '%), ' + totalTon + 'kg de tonelaje total.';
+  if (avgRpe !== null) summary += ' RPE medio de la semana: ' + avgRpe + '/10.';
+  if (worstDays.length) summary += ' Días a vigilar: ' + worstDays.map(d=>d.dayName).join(', ') + '.';
+  return summary;
+}
 
 function dayReportPlainText(data, memoText){
   const lines = [];
@@ -4050,27 +4062,10 @@ function dayReportPlainText(data, memoText){
   return lines.join('\n');
 }
 
-async function generateDayReport(plan, day){
+function generateDayReport(plan, day){
   const data = dayReportData(plan, day);
-  state.dayReport = { day, planId: plan.id, data, memo: { loading:true, text:null, error:null } };
-  render();
-  try{
-    const exerciseLines = data.exLines.map(l=>'- '+l.name+': '+l.setsStr).join('\n') || '(sin ejercicios registrados)';
-    const prompt =
-      'Eres un entrenador nacional de halterofilia revisando a distancia el entreno de hoy de un atleta que no entrena contigo. ' +
-      'Con estos datos, escribe un memo breve (máximo 3 frases, en español, en prosa, sin listas ni markdown, tono profesional y directo) ' +
-      'que conecte el rendimiento (series completadas, RPE, sensación) con la nota libre del atleta, y señale si hay algo a vigilar. ' +
-      'Si faltan datos relevantes, dilo brevemente y no inventes nada.\n\n' +
-      'Series completadas: ' + data.okSets + '/' + data.totalSets + '\n' +
-      'RPE: ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar') + '\n' +
-      'Sensación: ' + (feelingLabel(data.feeling) || 'sin registrar') + '\n' +
-      'Nota del atleta: ' + (data.note || '(sin nota)') + '\n\n' +
-      'Ejercicios:\n' + exerciseLines;
-    const text = await callClaudeAPI(prompt);
-    state.dayReport.memo = { loading:false, text, error:null };
-  }catch(err){
-    state.dayReport.memo = { loading:false, text:null, error:'No se ha podido generar el memo (sin conexión o fallo de la IA). Los datos de arriba siguen siendo válidos.' };
-  }
+  const summary = localDaySummary(data);
+  state.dayReport = { day, planId: plan.id, data, memo: { loading:false, text: summary, error:null } };
   render();
 }
 
@@ -4094,27 +4089,10 @@ function weekReportPlainText(plan, perDay, memoText){
   return lines.join('\n');
 }
 
-async function generateWeekReport(plan){
+function generateWeekReport(plan){
   const perDay = DAY_ORDER.filter(d=>plan.days[d] && plan.days[d].length).map(d=>dayReportData(plan, d));
-  state.weekReport = { planId: plan.id, perDay, memo: { loading:true, text:null, error:null } };
-  render();
-  try{
-    const lines = perDay.map(d=>
-      d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series, ' + d.tonnageKg + 'kg' +
-      (d.rpe!==null ? ', RPE '+d.rpe : '') + (d.feeling ? ', sensación '+feelingLabel(d.feeling) : '') +
-      (d.note ? ' — nota: "' + d.note + '"' : ' — sin nota')
-    ).join('\n');
-    const prompt =
-      'Eres un entrenador nacional de halterofilia revisando a distancia la semana de entreno de un atleta que no entrena ' +
-      'contigo. Con este resumen día a día (series completadas, tonelaje, RPE, sensación y notas libres), escribe un informe ' +
-      'breve (máximo 6 frases, en español, en prosa, sin listas ni markdown, tono profesional) destacando patrones relevantes ' +
-      '(cargas, fatiga, constancia, factores externos) y qué vigilarías la semana que viene. Si no hay datos suficientes, dilo brevemente.\n\n' +
-      (lines || '(sin datos esta semana)');
-    const text = await callClaudeAPI(prompt);
-    state.weekReport.memo = { loading:false, text, error:null };
-  }catch(err){
-    state.weekReport.memo = { loading:false, text:null, error:'No se ha podido generar el resumen (sin conexión o fallo de la IA). Los datos de arriba siguen siendo válidos.' };
-  }
+  const summary = localWeekSummary(perDay);
+  state.weekReport = { planId: plan.id, perDay, memo: { loading:false, text: summary, error:null } };
   render();
 }
 
