@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
@@ -1226,9 +1228,9 @@ function makeUser(name){
 async function loadUsersAsync(){
   try{ const raw = await storageGet(USERS_KEY); return raw ? JSON.parse(raw) : []; }catch(e){ return []; }
 }
-function saveUsersAsync(u){ return storageSet(USERS_KEY, JSON.stringify(u)); }
+function saveUsersAsync(u){ schedulePush(); return storageSet(USERS_KEY, JSON.stringify(u)); }
 async function loadActiveUserIdAsync(){ return await storageGet(ACTIVE_USER_KEY); }
-function saveActiveUserIdAsync(id){ if (!id) return Promise.resolve(); return storageSet(ACTIVE_USER_KEY, id); }
+function saveActiveUserIdAsync(id){ if (!id) return Promise.resolve(); schedulePush(); return storageSet(ACTIVE_USER_KEY, id); }
 
 let userDataCache = {}; // { userId: {plans,checks,notes} } — caché en memoria para no repetir lecturas
 
@@ -1246,10 +1248,12 @@ async function loadUserDataAsync(userId){
 }
 function saveUserDataAsync(userId, data){
   userDataCache[userId] = data;
+  schedulePush();
   return storageSet(userDataKey(userId), JSON.stringify(data));
 }
 function deleteUserDataAsync(userId){
   delete userDataCache[userId];
+  schedulePush();
   return storageDelete(userDataKey(userId));
 }
 function persistUserData(){
@@ -1287,6 +1291,121 @@ async function migrateLegacyLocalStorage(){
 let users = [];
 let activeUserId = null;
 let lastBackupTs = null;
+
+/* ============== SINCRONIZACIÓN ENTRE DISPOSITIVOS (Firebase) ==============
+   Opcional: si el usuario activa un "código de sincronización", todos sus
+   datos (usuarios, planes, marcas, notas, RM...) se guardan también en una
+   base de datos en la nube (Firestore), y cualquier otro dispositivo con el
+   mismo código lee y escribe los mismos datos, casi en tiempo real. Sin
+   código, la app funciona exactamente igual que antes (solo local). */
+const firebaseConfig = {
+  apiKey: "AIzaSyAZsCxPgTvFddB5IhDe6hqWtkycykMXAKw",
+  authDomain: "mi-plan-halterofilia.firebaseapp.com",
+  projectId: "mi-plan-halterofilia",
+  storageBucket: "mi-plan-halterofilia.firebasestorage.app",
+  messagingSenderId: "549711645214",
+  appId: "1:549711645214:web:2a15c4a830103fa7effc0f"
+};
+const SYNC_CODE_KEY = 'sync_code_v1';
+let fbDb = null;
+let syncCode = null;
+let syncStatus = 'off'; // 'off' | 'connecting' | 'on' | 'error'
+let syncListenerUnsub = null;
+let syncPushTimer = null;
+let applyingRemoteSync = false;
+
+function ensureFirebase(){
+  if (fbDb) return fbDb;
+  try{
+    const app = firebase.initializeApp(firebaseConfig);
+    fbDb = firebase.firestore();
+    return fbDb;
+  }catch(e){ return null; }
+}
+
+async function buildFullSyncSnapshot(){
+  const data = {};
+  for (const u of users){
+    data[u.id] = userDataCache[u.id] || await loadUserDataAsync(u.id);
+  }
+  return { updatedAt: Date.now(), users, activeUserId, data };
+}
+
+function applyFullSyncSnapshot(snap){
+  if (!snap) return;
+  applyingRemoteSync = true;
+  users = snap.users || [];
+  activeUserId = (snap.activeUserId && users.find(u=>u.id===snap.activeUserId)) ? snap.activeUserId : ((users[0]&&users[0].id)||null);
+  Object.keys(snap.data || {}).forEach(uid=>{
+    const d = snap.data[uid] || { plans:[], checks:{}, notes:{} };
+    userDataCache[uid] = d;
+    saveUserDataAsync(uid, d);
+  });
+  saveUsersAsync(users);
+  if (activeUserId) saveActiveUserIdAsync(activeUserId);
+  if (activeUserId){
+    const d = userDataCache[activeUserId] || { plans:[], checks:{}, notes:{} };
+    state.plans = d.plans; state.checks = d.checks; state.notes = d.notes;
+    const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
+    state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
+    state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
+  }
+  applyingRemoteSync = false;
+  render();
+}
+
+function schedulePush(){
+  if (applyingRemoteSync) return;
+  if (!syncCode || syncStatus!=='on') return;
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(pushToCloudNow, 1200);
+}
+
+async function pushToCloudNow(){
+  if (!syncCode) return;
+  const database = ensureFirebase();
+  if (!database) return;
+  try{
+    const snap = await buildFullSyncSnapshot();
+    await database.collection('sync_codes').doc(syncCode).set(snap);
+  }catch(e){ /* se reintentará en el próximo cambio */ }
+}
+
+async function startSync(code){
+  syncCode = code.trim();
+  if (!syncCode) return;
+  syncStatus = 'connecting';
+  render();
+  const database = ensureFirebase();
+  if (!database){ syncStatus='error'; render(); return; }
+  try{
+    const docRef = database.collection('sync_codes').doc(syncCode);
+    const docSnap = await docRef.get();
+    if (docSnap.exists){
+      applyFullSyncSnapshot(docSnap.data());
+    } else {
+      await pushToCloudNow();
+    }
+    if (syncListenerUnsub) syncListenerUnsub();
+    syncListenerUnsub = docRef.onSnapshot(snap=>{
+      if (snap.metadata.hasPendingWrites) return; // eco de nuestra propia escritura
+      applyFullSyncSnapshot(snap.data());
+    });
+    await storageSet(SYNC_CODE_KEY, syncCode);
+    syncStatus = 'on';
+  }catch(e){
+    syncStatus = 'error';
+  }
+  render();
+}
+
+function stopSync(){
+  if (syncListenerUnsub){ syncListenerUnsub(); syncListenerUnsub=null; }
+  syncCode = null;
+  syncStatus = 'off';
+  storageDelete(SYNC_CODE_KEY);
+  render();
+}
 
 function getUser(id){ return users.find(u=>u.id===id); }
 function getActiveUser(){ return getUser(activeUserId); }
@@ -1347,6 +1466,8 @@ let state = {
   dayNoteDraft: null,
   confirmDeleteExercise: null,
   showMenu: false,
+  showSync: false,
+  syncCodeDraft: '',
   dayReport: null,   // { day, planId, loading, text, error }
   weekReport: null   // { planId, loading, text, error }
 };
@@ -1421,6 +1542,11 @@ async function initApp(){
 
   render();
   prefetchAllUserData();
+
+  try{
+    const savedCode = await storageGet(SYNC_CODE_KEY);
+    if (savedCode) startSync(savedCode); // no se espera, para no retrasar el primer render
+  }catch(e){}
 }
 
 function planId(meta){
@@ -1674,6 +1800,7 @@ function render(){
     root.appendChild(renderProfileScreen());
     if (state.showUsers) root.appendChild(renderUsersSheet());
     if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+    if (state.showSync) root.appendChild(renderSyncOverlay());
     return;
   }
   const activePlan = state.plans.find(p=>p.id===state.activePlanId);
@@ -1681,6 +1808,7 @@ function render(){
     root.appendChild(renderUpload());
     if (state.showUsers) root.appendChild(renderUsersSheet());
     if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+    if (state.showSync) root.appendChild(renderSyncOverlay());
     return;
   }
   if (activePlan.needsReview && !state.reviewDismissed){
@@ -1703,6 +1831,7 @@ function render(){
   if (state.dayReport) root.appendChild(renderDayReportOverlay());
   if (state.weekReport) root.appendChild(renderWeekReportOverlay(activePlan));
   if (state.showMenu) root.appendChild(renderMenuSheet(activePlan));
+  if (state.showSync) root.appendChild(renderSyncOverlay());
   if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
 }
 
@@ -1734,6 +1863,11 @@ function renderUpload(){
   userBadge.appendChild(changeSpan);
   userBadge.onclick = ()=>{ state.showUsers = true; render(); };
   wrap.appendChild(userBadge);
+
+  const syncBadge = el('div', null, syncStatus==='on' ? '🔄 Sincronización activa' : '📴 Sincronizar entre dispositivos');
+  syncBadge.style.cssText = 'font-size:11.5px;color:' + (syncStatus==='on' ? 'var(--ok)' : 'var(--muted-2)') + ';text-decoration:underline;cursor:pointer;margin-bottom:18px;font-family:Inter,sans-serif;';
+  syncBadge.onclick = ()=>{ state.showSync = true; render(); };
+  wrap.appendChild(syncBadge);
 
   const restoreRow = el('div');
   restoreRow.style.cssText = 'margin-bottom:22px;text-align:center;';
@@ -3273,6 +3407,91 @@ function menuItem(icon, label, onClick){
   return item;
 }
 
+/* ---- Sincronización entre dispositivos ---- */
+function renderSyncOverlay(){
+  const overlay = el('div','overlay');
+  const close = ()=>{ state.showSync=false; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Sincronizar entre dispositivos'));
+
+  if (syncStatus==='on'){
+    const okBox = el('div');
+    okBox.style.cssText = 'background:var(--surface-2);border-radius:10px;padding:14px;margin-bottom:14px;';
+    const okLine = el('div', null, '✓ Sincronizando');
+    okLine.style.cssText = 'color:var(--ok);font-weight:600;';
+    okBox.appendChild(okLine);
+    const codeRow = el('div', null, syncCode);
+    codeRow.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;margin-top:8px;color:var(--chalk);';
+    okBox.appendChild(codeRow);
+    const hint = el('div','ex-hint');
+    hint.style.cssText = 'margin-top:8px;';
+    hint.textContent = 'Introduce este mismo código en tus otros dispositivos para que compartan estos datos.';
+    okBox.appendChild(hint);
+    sheet.appendChild(okBox);
+
+    const copyBtn = el('button','tb-btn','📋 Copiar código');
+    copyBtn.style.width = '100%';
+    copyBtn.onclick = async ()=>{
+      let copied = false;
+      try{ if (navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(syncCode); copied = true; } }catch(e){}
+      if (!copied){
+        try{
+          const ta = document.createElement('textarea');
+          ta.value = syncCode; ta.style.position='fixed'; ta.style.opacity='0';
+          document.body.appendChild(ta); ta.focus(); ta.select();
+          document.execCommand('copy'); document.body.removeChild(ta);
+          copied = true;
+        }catch(e){}
+      }
+      copyBtn.textContent = copied ? '✓ Copiado' : 'No se pudo copiar';
+      setTimeout(()=>{ copyBtn.textContent = '📋 Copiar código'; }, 2000);
+    };
+    sheet.appendChild(copyBtn);
+
+    const stopBtn = el('button','tb-btn','Desactivar en este dispositivo');
+    stopBtn.style.cssText = 'width:100%;margin-top:8px;color:var(--red);';
+    stopBtn.onclick = ()=>{ stopSync(); };
+    sheet.appendChild(stopBtn);
+  } else {
+    const hint = el('div','ex-hint');
+    hint.style.cssText = 'margin-bottom:12px;';
+    hint.textContent = 'Crea un código (o usa uno que ya tengas de otro dispositivo tuyo) para que todos compartan los mismos datos, casi en tiempo real.';
+    sheet.appendChild(hint);
+
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = 'Ej. rafa-halter-2026';
+    inp.value = state.syncCodeDraft || '';
+    inp.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:14px;padding:10px;';
+    inp.addEventListener('input', e=>{ state.syncCodeDraft = e.target.value; });
+    sheet.appendChild(inp);
+
+    if (syncStatus==='connecting'){
+      const l = el('div','ex-hint','Conectando…'); l.style.marginTop='8px';
+      sheet.appendChild(l);
+    } else if (syncStatus==='error'){
+      const err = el('div', null, 'No se ha podido conectar. Comprueba tu conexión e inténtalo de nuevo.');
+      err.style.cssText = 'color:var(--red);font-size:12.5px;margin-top:8px;line-height:1.4;';
+      sheet.appendChild(err);
+    }
+
+    const startBtn = el('button','mark-btn ok selected','Activar sincronización');
+    startBtn.style.cssText += 'width:100%;margin-top:12px;';
+    startBtn.onclick = ()=>{
+      const code = (state.syncCodeDraft||'').trim();
+      if (!code) return;
+      startSync(code);
+    };
+    sheet.appendChild(startBtn);
+  }
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
 function renderMenuSheet(plan){
   const overlay = el('div','overlay');
   const close = ()=>{ state.showMenu = false; render(); };
@@ -3284,6 +3503,7 @@ function renderMenuSheet(plan){
   sheet.appendChild(menuItem('📈', 'Análisis', ()=>{ state.showAnalytics=true; state.showMenu=false; render(); }));
   sheet.appendChild(menuItem('🎯', 'Perfil', ()=>{ state.showProfile=true; state.showMenu=false; render(); }));
   sheet.appendChild(menuItem('👤', 'Deportista: ' + getActiveUser().name, ()=>{ state.showUsers=true; state.showMenu=false; render(); }));
+  sheet.appendChild(menuItem(syncStatus==='on' ? '🔄' : '📴', syncStatus==='on' ? 'Sincronización: activa' : 'Sincronizar entre dispositivos', ()=>{ state.showSync=true; state.showMenu=false; render(); }));
   sheet.appendChild(menuItem('🧾', 'Informe semanal', ()=>{ state.showMenu=false; generateWeekReport(plan); }));
   sheet.appendChild(menuItem('💾', 'Exportar copia de seguridad', async ()=>{
     state.showMenu = false;
