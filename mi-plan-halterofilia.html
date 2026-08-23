@@ -387,6 +387,8 @@ input[type=file]{display:none;}
 }
 .fc-card{
   width:100%;
+  max-height:100%;
+  overflow-y:auto;
   display:flex;flex-direction:column;align-items:center;gap:22px;
   padding:30px 20px;
   animation:fcPopIn .3s cubic-bezier(.22,.85,.32,1) both;
@@ -1198,7 +1200,11 @@ function rpeInput(value, onChange){
   return wrap;
 }
 
-function noteKey(plan, day){ return plan.id + '|' + day; }
+// Sin exIdx: nota general del día (no ligada a un ejercicio concreto).
+// Con exIdx: nota propia de ese ejercicio ese día.
+function noteKey(plan, day, exIdx){
+  return (exIdx===undefined || exIdx===null) ? (plan.id + '|' + day) : (plan.id + '|' + day + '|' + exIdx);
+}
 
 // Las notas del día ahora pueden llevar, además del texto libre, un par de
 // datos rápidos útiles para quien revise el entreno a distancia (RPE y
@@ -1463,7 +1469,7 @@ let state = {
   rmForm: null,            // { code, value, date } while the "+ Registrar RM" mini form is open
   metricForm: null,        // { date, peso, sistolica, diastolica } while the "+ Registrar medida" mini form is open
   showDayNote: false,
-  dayNoteDraft: null,
+  dayNoteDrafts: null,
   confirmDeleteExercise: null,
   showMenu: false,
   showSync: false,
@@ -2108,10 +2114,11 @@ function renderApp(plan){
   headLeft.appendChild(el('div','day-count', exCount ? (exCount + (exCount===1?' ejercicio':' ejercicios')) : ''));
   heading.appendChild(headLeft);
   const nKeyHead = noteKey(plan, state.activeDay);
-  const hasNote = !!state.notes[nKeyHead];
-  const noteBtn = el('button', null, hasNote ? '📝 Nota' : '📝 Añadir nota');
+  const exEntriesForNote = entries.filter(e=>e.type==='exercise');
+  const hasNote = !!state.notes[nKeyHead] || exEntriesForNote.some((e,exIdx)=>!!state.notes[noteKey(plan, state.activeDay, exIdx)]);
+  const noteBtn = el('button', null, hasNote ? '📝 Notas' : '📝 Añadir nota');
   noteBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:' + (hasNote?'var(--yellow-deep)':'var(--muted)') + ';font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
-  noteBtn.onclick = ()=>{ state.showDayNote = true; state.dayNoteDraft = null; render(); };
+  noteBtn.onclick = ()=>{ state.showDayNote = true; state.dayNoteDrafts = null; render(); };
   heading.appendChild(noteBtn);
   const dayReportBtn = el('button', null, '🧾 Informe');
   dayReportBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
@@ -2474,14 +2481,14 @@ function renderFlashcardOverlay(plan){
 
     cardArea.appendChild(card);
   } else if (state.flashcard.showMemo){
-    const nKey = noteKey(plan, day);
+    const nKey = noteKey(plan, day, exIdx);
     const savedNote = normalizeNote(state.notes[nKey]);
     if (state.flashcard.memoDraft === undefined){
       state.flashcard.memoDraft = { text: savedNote.text, rpe: savedNote.rpe, feeling: savedNote.feeling };
     }
     const draft = state.flashcard.memoDraft;
     const card = el('div','fc-card fc-final'+dirClass);
-    card.appendChild(el('div','fc-final-title','Notas del entreno'));
+    card.appendChild(el('div','fc-final-title','Nota de este ejercicio'));
     card.appendChild(el('div','fc-final-sub','Calor, alimentación, cómo has dormido… cualquier cosa que creas que ha influido hoy.'));
     card.appendChild(feelingSelector(draft.feeling, v=>{ draft.feeling = v; render(); }));
     card.appendChild(rpeInput(draft.rpe, v=>{ draft.rpe = v; }));
@@ -3717,52 +3724,89 @@ function renderUsersSheet(){
 /* ---- Nota del día (calor, sueño, alimentación…) ---- */
 function renderDayNoteOverlay(plan){
   const overlay = el('div','overlay');
-  const close = ()=>{ state.showDayNote=false; state.dayNoteDraft=null; render(); };
+  const close = ()=>{ state.showDayNote=false; state.dayNoteDrafts=null; render(); };
   overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
   const sheet = el('div','sheet');
-  sheet.appendChild(el('h3','Nota de ' + DAY_NAMES[state.activeDay]));
+  sheet.appendChild(el('h3','Notas de ' + DAY_NAMES[state.activeDay]));
   const hint = el('div','ex-hint');
-  hint.style.cssText = 'margin-bottom:12px;';
-  hint.textContent = 'Calor, alimentación, cómo has dormido… cualquier cosa que creas que ha influido en el entreno de hoy.';
+  hint.style.cssText = 'margin-bottom:14px;';
+  hint.textContent = 'Cada ejercicio guarda su propia nota (la que rellenas al pulsar "Finalizar"). Aquí las ves todas juntas y puedes editarlas o añadir una nota general del día.';
   sheet.appendChild(hint);
 
-  const nKey = noteKey(plan, state.activeDay);
-  if (!state.dayNoteDraft){
-    const saved = normalizeNote(state.notes[nKey]);
-    state.dayNoteDraft = { text: saved.text, rpe: saved.rpe, feeling: saved.feeling };
+  const day = state.activeDay;
+  const generalKey = noteKey(plan, day);
+  const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
+
+  if (!state.dayNoteDrafts){
+    const drafts = { general: normalizeNote(state.notes[generalKey]) };
+    entries.forEach((e, exIdx)=>{
+      const k = noteKey(plan, day, exIdx);
+      if (state.notes[k]) drafts['ex_'+exIdx] = normalizeNote(state.notes[k]);
+    });
+    state.dayNoteDrafts = drafts;
   }
-  const draft = state.dayNoteDraft;
+  const drafts = state.dayNoteDrafts;
 
-  sheet.appendChild(feelingSelector(draft.feeling, v=>{ draft.feeling = v; render(); }));
-  sheet.appendChild(rpeInput(draft.rpe, v=>{ draft.rpe = v; }));
-
-  const ta = document.createElement('textarea');
-  ta.value = draft.text || '';
-  ta.rows = 5;
-  ta.placeholder = 'Ej. Mucho calor en el gimnasio, dormí poco, comí tarde…';
-  ta.className = 'fc-memo-textarea';
-  ta.addEventListener('input', e=>{ draft.text = e.target.value; });
-  sheet.appendChild(ta);
-
-  const actions = el('div');
-  actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
-  if (state.notes[nKey]){
-    const delBtn = el('button','tb-btn','Borrar nota');
-    delBtn.style.flex = '1';
-    delBtn.onclick = ()=>{ delete state.notes[nKey]; persistUserData(); close(); };
-    actions.appendChild(delBtn);
+  function noteBlock(title, draftKey, storageKey, deletable){
+    const card = el('div','ex-card');
+    card.style.cssText += 'margin-bottom:12px;cursor:default;';
+    const top = el('div');
+    top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;';
+    top.appendChild(el('div','ex-name', title));
+    if (deletable){
+      const delBtn = el('button', null, '🗑');
+      delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:32px;height:32px;border-radius:8px;cursor:pointer;flex-shrink:0;';
+      delBtn.onclick = ()=>{
+        delete state.notes[storageKey];
+        delete drafts[draftKey];
+        persistUserData();
+        render();
+      };
+      top.appendChild(delBtn);
+    }
+    card.appendChild(top);
+    const d = drafts[draftKey];
+    card.appendChild(feelingSelector(d.feeling, v=>{ d.feeling = v; render(); }));
+    card.appendChild(rpeInput(d.rpe, v=>{ d.rpe = v; }));
+    const ta = document.createElement('textarea');
+    ta.value = d.text || '';
+    ta.rows = 3;
+    ta.placeholder = 'Calor, sueño, alimentación…';
+    ta.className = 'fc-memo-textarea';
+    ta.addEventListener('input', e=>{ d.text = e.target.value; });
+    card.appendChild(ta);
+    return card;
   }
-  const saveBtn = el('button','mark-btn ok selected','Guardar');
-  saveBtn.style.flex = '2';
+
+  sheet.appendChild(noteBlock('📝 Nota general del día', 'general', generalKey, false));
+
+  let anyExerciseNote = false;
+  entries.forEach((e, exIdx)=>{
+    const draftKey = 'ex_' + exIdx;
+    if (drafts[draftKey]){
+      anyExerciseNote = true;
+      sheet.appendChild(noteBlock(e.name || ('Código ' + e.code), draftKey, noteKey(plan, day, exIdx), true));
+    }
+  });
+  if (!anyExerciseNote){
+    const empty = el('div','ex-hint','Todavía no hay ninguna nota de ejercicio este día — se añaden al pulsar "Finalizar" tras completarlo.');
+    empty.style.marginBottom = '12px';
+    sheet.appendChild(empty);
+  }
+
+  const saveBtn = el('button','mark-btn ok selected','Guardar todo');
+  saveBtn.style.cssText += 'width:100%;';
   saveBtn.onclick = ()=>{
-    const text = ta.value.trim();
-    if (text || draft.rpe!==null || draft.feeling!==null) state.notes[nKey] = { text, rpe: draft.rpe, feeling: draft.feeling };
-    else delete state.notes[nKey];
+    Object.keys(drafts).forEach(k=>{
+      const d = drafts[k];
+      const sKey = k==='general' ? generalKey : noteKey(plan, day, parseInt(k.slice(3),10));
+      if (d.text || d.rpe!==null || d.feeling!==null) state.notes[sKey] = { text: d.text||'', rpe: d.rpe, feeling: d.feeling };
+      else delete state.notes[sKey];
+    });
     persistUserData();
     close();
   };
-  actions.appendChild(saveBtn);
-  sheet.appendChild(actions);
+  sheet.appendChild(saveBtn);
 
   const closeBtn = el('button','sheet-close','Cerrar');
   closeBtn.onclick = close;
@@ -3923,8 +3967,39 @@ async function callClaudeAPI(promptText){
    IA; después un memo breve generado por la IA que conecta esos datos con
    las notas libres. Todo pensado para poder copiarse o enviarse por email. */
 
+const FEELING_ORDER = ['mal','regular','bien','muybien'];
+function worstFeeling(list){
+  const present = list.filter(Boolean);
+  if (!present.length) return null;
+  return present.reduce((worst,f)=> FEELING_ORDER.indexOf(f) < FEELING_ORDER.indexOf(worst) ? f : worst, present[0]);
+}
+
+// Combina la nota general del día con la de cada ejercicio en un único
+// bloque: RPE medio, la sensación más baja de todas (para no esconder
+// problemas) y el texto de cada una, indicando de qué ejercicio viene.
+function dayCombinedNote(plan, day){
+  const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
+  const parts = [];
+  const rpes = [], feelings = [];
+  const general = normalizeNote(state.notes[noteKey(plan, day)]);
+  if (general.text) parts.push(general.text);
+  if (general.rpe!==null) rpes.push(general.rpe);
+  if (general.feeling) feelings.push(general.feeling);
+  entries.forEach((e, exIdx)=>{
+    const n = normalizeNote(state.notes[noteKey(plan, day, exIdx)]);
+    if (n.text) parts.push('[' + (e.name || ('Código '+e.code)) + '] ' + n.text);
+    if (n.rpe!==null) rpes.push(n.rpe);
+    if (n.feeling) feelings.push(n.feeling);
+  });
+  return {
+    text: parts.join('\n'),
+    rpe: rpes.length ? Math.round(rpes.reduce((a,b)=>a+b,0)/rpes.length) : null,
+    feeling: worstFeeling(feelings)
+  };
+}
+
 function dayReportData(plan, day){
-  const noteObj = normalizeNote(state.notes[noteKey(plan, day)]);
+  const noteObj = dayCombinedNote(plan, day);
   const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
   const exLines = entries.map((e, exIdx)=>{
     const setsStr = e.sets.map((s,si)=>{
@@ -3948,6 +4023,7 @@ function dayReportData(plan, day){
     rpe: noteObj.rpe, feeling: noteObj.feeling, note: noteObj.text
   };
 }
+
 
 function dayReportPlainText(data, memoText){
   const lines = [];
