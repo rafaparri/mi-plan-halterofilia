@@ -1503,6 +1503,8 @@ let state = {
   flashcard: null,        // { day, exIdx, cardIdx }
   showAnalytics: false,
   confirmDeleteId: null,
+  renamingPlanId: null,
+  renamePlanDraft: '',
   newWeightDraft: null,   // { kg, series, reps } while the "+ nuevo peso" mini form is open
   showUsers: false,
   showProfile: false,
@@ -2090,7 +2092,7 @@ function renderApp(plan){
   const top = el('div','topbar');
   const row = el('div','topbar-row');
   const left = el('div');
-  left.appendChild(el('div','athlete-name', plan.meta.athlete || 'Mi plan'));
+  left.appendChild(el('div','athlete-name', plan.customName || plan.meta.athlete || 'Mi plan'));
   const metaBits = [];
   if (plan.meta.jornada) metaBits.push(plan.meta.jornada);
   left.appendChild(el('div','meta-line', metaBits.join(' · ') || 'Plan de entrenamiento'));
@@ -2796,12 +2798,35 @@ function renderHistorySheet(){
   }
   sorted.forEach(p=>{
     const item = el('div','hist-item');
-    const l = el('div');
-    l.style.flex = '1';
-    l.appendChild(el('div','hi-title', (p.meta.athlete||'Plan') + (p.meta.week!==null&&p.meta.week!==undefined ? (' · Semana '+p.meta.week) : '')));
-    l.appendChild(el('div','hi-sub', (p.meta.jornada||'') + ' · subido ' + new Date(p.uploadedAt).toLocaleDateString('es-ES')));
-    l.onclick = ()=>{ state.activePlanId = p.id; state.activeDay=null; state.showHistory=false; state.confirmDeleteId=null; state.reviewDismissed = !p.needsReview; render(); };
-    item.appendChild(l);
+
+    if (state.renamingPlanId === p.id){
+      const row = el('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;flex:1;';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = state.renamePlanDraft;
+      inp.placeholder = p.meta.athlete || 'Nombre de la semana';
+      inp.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13.5px;padding:8px 10px;';
+      inp.oninput = (e)=>{ state.renamePlanDraft = e.target.value; };
+      const okBtn = el('button', null, '✓');
+      okBtn.style.cssText = 'background:var(--ok);border:none;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;';
+      okBtn.onclick = (e)=>{
+        e.stopPropagation();
+        const name = state.renamePlanDraft.trim();
+        p.customName = name || null;
+        persistUserData();
+        state.renamingPlanId = null;
+        render();
+      };
+      row.appendChild(inp); row.appendChild(okBtn);
+      item.appendChild(row);
+    } else {
+      const l = el('div');
+      l.style.flex = '1';
+      l.appendChild(el('div','hi-title', (p.customName || p.meta.athlete || 'Plan') + (p.meta.week!==null&&p.meta.week!==undefined ? (' · Semana '+p.meta.week) : '')));
+      l.appendChild(el('div','hi-sub', (p.meta.jornada||'') + ' · subido ' + new Date(p.uploadedAt).toLocaleDateString('es-ES')));
+      l.onclick = ()=>{ state.activePlanId = p.id; state.activeDay=null; state.showHistory=false; state.confirmDeleteId=null; state.reviewDismissed = !p.needsReview; render(); };
+      item.appendChild(l);
+    }
 
     if (state.confirmDeleteId === p.id){
       const confirmWrap = el('div');
@@ -2827,17 +2852,29 @@ function renderHistorySheet(){
       confirmWrap.appendChild(el('span',null,'¿Eliminar?'));
       confirmWrap.appendChild(yesBtn); confirmWrap.appendChild(noBtn);
       item.appendChild(confirmWrap);
-    } else {
+    } else if (state.renamingPlanId !== p.id){
+      const btns = el('div');
+      btns.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+      const renBtn = el('button', null, '✎');
+      renBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;font-size:13px;';
+      renBtn.onclick = (e)=>{
+        e.stopPropagation();
+        state.renamingPlanId = p.id;
+        state.renamePlanDraft = p.customName || '';
+        render();
+      };
+      btns.appendChild(renBtn);
       const delBtn = el('button', null, '🗑');
       delBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;font-size:14px;';
       delBtn.onclick = (e)=>{ e.stopPropagation(); state.confirmDeleteId = p.id; render(); };
-      item.appendChild(delBtn);
+      btns.appendChild(delBtn);
+      item.appendChild(btns);
     }
 
     sheet.appendChild(item);
   });
   const closeBtn = el('button','sheet-close','Cerrar');
-  closeBtn.onclick = ()=>{ state.showHistory=false; state.confirmDeleteId=null; render(); };
+  closeBtn.onclick = ()=>{ state.showHistory=false; state.confirmDeleteId=null; state.renamingPlanId=null; render(); };
   sheet.appendChild(closeBtn);
   overlay.appendChild(sheet);
   return overlay;
