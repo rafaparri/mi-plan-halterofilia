@@ -301,10 +301,6 @@ input[type=file]{display:none;}
   transition:background .12s ease, border-color .12s ease, color .12s ease;
 }
 .chip b{color:var(--yellow-deep);font-weight:600;}
-.chip.chip-ok{background:var(--ok);border-color:var(--ok);color:#0e1a0e;}
-.chip.chip-ok b{color:#0e1a0e;}
-.chip.chip-bad{background:var(--red);border-color:var(--red);color:#2a0e07;}
-.chip.chip-bad b{color:#2a0e07;}
 
 .ex-hint{
   margin:2px 0 0 44px;
@@ -413,15 +409,14 @@ input[type=file]{display:none;}
   font-weight:700;
   text-transform:uppercase;letter-spacing:.02em;
 }
-.fc-mark-row{ display:flex; gap:14px; width:100%; margin-top:12px; }
+.fc-mark-row{ display:flex; gap:7px; width:100%; margin-top:12px; }
 .fc-mark{
-  flex:1;padding:22px 0;border-radius:14px;
-  border:2px solid var(--surface-3);background:var(--surface-2);color:var(--muted);
-  font-family:'Oswald',sans-serif;font-weight:700;font-size:24px;letter-spacing:.02em;
+  flex:1;padding:12px 0;border-radius:12px;
+  border:2px solid var(--surface-3);background:var(--surface-2);
+  font-size:24px;line-height:1;
   cursor:pointer;transition:all .12s ease;
 }
-.fc-mark.ok.selected{background:var(--ok);border-color:var(--ok);color:#0e1a0e;}
-.fc-mark.bad.selected{background:var(--red);border-color:var(--red);color:#fff8f0;}
+.fc-mark.selected{ transform:scale(1.06); }
 
 .fc-final{ text-align:center; }
 .fc-final-title{
@@ -1225,6 +1220,24 @@ function feelingLabel(key){
   const f = FEELING_OPTIONS.find(o=>o.key===key);
   return f ? f.label : null;
 }
+
+// Escala de valoración de cada peso/serie: 5 niveles con icono, sin texto.
+// Se guarda como número 1-5. Se admiten los valores antiguos 'ok'/'bad'
+// (del sistema binario previo) por compatibilidad con marcas ya guardadas.
+const SET_RATING_LEVELS = [
+  { value:1, icon:'😫', color:'#c14a3a' }, // muy mal
+  { value:2, icon:'😞', color:'#d9793f' }, // mal
+  { value:3, icon:'😐', color:'#c99a2e' }, // regular
+  { value:4, icon:'🙂', color:'#5a8fb0' }, // bien
+  { value:5, icon:'💪', color:'#2f7dc4' }  // muy bien
+];
+function normalizeCheck(raw){
+  if (raw === 'ok') return 4;
+  if (raw === 'bad') return 2;
+  const n = Number(raw);
+  return (n>=1 && n<=5) ? n : null;
+}
+function ratingInfo(value){ return SET_RATING_LEVELS.find(l=>l.value===value) || null; }
 
 function makeUserId(){ return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function makeUser(name){
@@ -2218,10 +2231,13 @@ function renderExerciseCard(plan, day, entry, idx){
   const info = el('div','ex-info');
   const nameText = entry.name || ('Código ' + entry.code + ' (sin identificar)');
   info.appendChild(el('div','ex-name' + (entry.name?'':' unknown'), nameText));
-  const okCount = entry.sets.filter((s,si)=>state.checks[checkKey(plan,day,idx,si)]==='ok').length;
-  const badCount = entry.sets.filter((s,si)=>state.checks[checkKey(plan,day,idx,si)]==='bad').length;
+  const ratings = entry.sets.map((s,si)=>normalizeCheck(state.checks[checkKey(plan,day,idx,si)])).filter(r=>r!==null);
   const subBits = [entry.sets.length + (entry.sets.length===1? ' peso':' pesos')];
-  if (okCount || badCount) subBits.push(okCount+' bien'+(badCount? ', '+badCount+' mal':''));
+  if (ratings.length){
+    const avg = ratings.reduce((a,b)=>a+b,0)/ratings.length;
+    const avgInfo = ratingInfo(Math.round(avg));
+    subBits.push((avgInfo?avgInfo.icon+' ':'') + 'media ' + avg.toFixed(1));
+  }
   info.appendChild(el('div','ex-sub', subBits.join(' · ')));
   top.appendChild(info);
   const entryKey = day + '|' + idx;
@@ -2233,10 +2249,13 @@ function renderExerciseCard(plan, day, entry, idx){
 
   const chips = el('div','set-chips');
   entry.sets.forEach((s, si)=>{
-    const status = state.checks[checkKey(plan,day,idx,si)];
-    const chip = el('div','chip' + (status==='ok'?' chip-ok':status==='bad'?' chip-bad':''));
+    const rating = normalizeCheck(state.checks[checkKey(plan,day,idx,si)]);
+    const rinfo = ratingInfo(rating);
+    const chip = el('div','chip');
+    if (rinfo){ chip.style.cssText = 'background:'+rinfo.color+';border-color:'+rinfo.color+';color:#fff;'; }
     const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
-    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay;
+    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay + (rinfo ? ' ' + rinfo.icon : '');
+    if (rinfo) chip.querySelector('b').style.color = '#fff';
     chip.onclick = (e)=>{ e.stopPropagation(); openFlashcards(day, idx, si); };
     chips.appendChild(chip);
   });
@@ -2466,7 +2485,7 @@ function renderFlashcardOverlay(plan){
   if (!isFinal){
     const s = entry.sets[cardIdx];
     const key = checkKey(plan, day, exIdx, cardIdx);
-    const status = state.checks[key];
+    const status = normalizeCheck(state.checks[key]);
 
     const card = el('div','fc-card'+dirClass);
     card.appendChild(el('div','fc-kg', s.kg+' kg'));
@@ -2484,25 +2503,20 @@ function renderFlashcardOverlay(plan){
     }
 
     const markRow = el('div','fc-mark-row');
-    const okBtn = el('button','fc-mark ok'+(status==='ok'?' selected':''), '✓ Bien');
-    const badBtn = el('button','fc-mark bad'+(status==='bad'?' selected':''), '✗ Mal');
-    okBtn.onclick = ()=>{
-      const wasOk = status==='ok';
-      state.checks[key] = wasOk ? null : 'ok';
-      if (!state.checks[key]) delete state.checks[key];
-      persistUserData();
-      if (!wasOk && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
-      else render();
-    };
-    badBtn.onclick = ()=>{
-      const wasBad = status==='bad';
-      state.checks[key] = wasBad ? null : 'bad';
-      if (!state.checks[key]) delete state.checks[key];
-      persistUserData();
-      if (!wasBad && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
-      else render();
-    };
-    markRow.appendChild(okBtn); markRow.appendChild(badBtn);
+    SET_RATING_LEVELS.forEach(level=>{
+      const selected = status === level.value;
+      const btn = el('button','fc-mark'+(selected?' selected':''), level.icon);
+      if (selected){ btn.style.background = level.color; btn.style.borderColor = level.color; }
+      btn.onclick = ()=>{
+        const wasThis = status === level.value;
+        state.checks[key] = wasThis ? null : level.value;
+        if (!state.checks[key]) delete state.checks[key];
+        persistUserData();
+        if (!wasThis && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
+        else render();
+      };
+      markRow.appendChild(btn);
+    });
     card.appendChild(markRow);
 
     if (state.flashcard.confirmDeleteSetIdx === cardIdx){
@@ -2662,12 +2676,11 @@ function buildAnalytics(){
       const entries = plan.days[day]; if (!entries) return;
       entries.forEach((entry,exIdx)=>{
         if (entry.type!=='exercise') return;
-        if (!perCodeThisPlan[entry.code]) perCodeThisPlan[entry.code] = { name: entry.name, kgs:[], ok:0, bad:0 };
+        if (!perCodeThisPlan[entry.code]) perCodeThisPlan[entry.code] = { name: entry.name, kgs:[], ratings:[] };
         entry.sets.forEach((s,si)=>{
           if (s.kg!==null && s.kg!==undefined) perCodeThisPlan[entry.code].kgs.push(s.kg);
-          const status = state.checks[checkKey(plan,day,exIdx,si)];
-          if (status==='ok') perCodeThisPlan[entry.code].ok++;
-          else if (status==='bad') perCodeThisPlan[entry.code].bad++;
+          const r = normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]);
+          if (r!==null) perCodeThisPlan[entry.code].ratings.push(r);
         });
       });
     });
@@ -2678,7 +2691,7 @@ function buildAnalytics(){
       byCode[code].points.push({
         label: (plan.meta.week!==null && plan.meta.week!==undefined) ? ('S'+plan.meta.week) : new Date(plan.uploadedAt).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'}),
         maxKg: Math.max(...c.kgs),
-        ok: c.ok, bad: c.bad
+        ratings: c.ratings
       });
     });
   });
@@ -2699,9 +2712,11 @@ function sparklineSVG(points){
   const pathD = coords.map((c,i)=> (i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
   const dots = coords.map(c=>{
     let color = '#8892a0';
-    if (c.p.ok>0 && c.p.bad===0) color = '#2f7dc4';
-    else if (c.p.bad>0 && c.p.ok===0) color = '#c14a3a';
-    else if (c.p.ok>0 && c.p.bad>0) color = '#c99a2e';
+    if (c.p.ratings && c.p.ratings.length){
+      const avg = c.p.ratings.reduce((a,b)=>a+b,0)/c.p.ratings.length;
+      const info = ratingInfo(Math.round(avg));
+      if (info) color = info.color;
+    }
     return '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="4.5" fill="'+color+'" stroke="#ffffff" stroke-width="1.5"/>';
   }).join('');
   const labels = coords.map(c=>
@@ -3004,8 +3019,8 @@ function trainingEntriesForCode(code){
         if (entry.type!=='exercise' || entry.code!==code) return;
         entry.sets.forEach((s, si)=>{
           if (s.kg===null || s.kg===undefined) return;
-          const status = state.checks[checkKey(plan, day, exIdx, si)];
-          out.push({ kg: s.kg, week: plan.meta && plan.meta.week, uploadedAt: plan.uploadedAt, ok: status==='ok' });
+          const status = normalizeCheck(state.checks[checkKey(plan, day, exIdx, si)]);
+          out.push({ kg: s.kg, week: plan.meta && plan.meta.week, uploadedAt: plan.uploadedAt, ok: status!==null && status>=4 });
         });
       });
     });
@@ -4072,16 +4087,17 @@ function dayReportData(plan, day){
   const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
   const exLines = entries.map((e, exIdx)=>{
     const setsStr = e.sets.map((s,si)=>{
-      const st = state.checks[checkKey(plan, day, exIdx, si)];
-      const mark = st==='ok' ? '✓' : st==='bad' ? '✗' : '·';
+      const st = normalizeCheck(state.checks[checkKey(plan, day, exIdx, si)]);
+      const info = ratingInfo(st);
+      const mark = info ? info.icon : '·';
       const reps = s.repsParts ? s.repsParts.join('+') : (s.reps??'?');
       return s.kg+'kg×'+(s.series||'?')+'x'+reps+mark;
     }).join('  ');
     return { name: e.name || ('Código '+e.code), setsStr };
   });
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
-  const okSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>state.checks[checkKey(plan,day,exIdx,si)]==='ok').length,0);
-  const badSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>state.checks[checkKey(plan,day,exIdx,si)]==='bad').length,0);
+  const okSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>{ const r=normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]); return r!==null && r>=4; }).length,0);
+  const badSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>{ const r=normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]); return r!==null && r<=2; }).length,0);
   return {
     dayName: DAY_NAMES[day],
     week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
