@@ -1234,9 +1234,9 @@ function makeUser(name){
 async function loadUsersAsync(){
   try{ const raw = await storageGet(USERS_KEY); return raw ? JSON.parse(raw) : []; }catch(e){ return []; }
 }
-function saveUsersAsync(u){ schedulePush(); return storageSet(USERS_KEY, JSON.stringify(u)); }
+function saveUsersAsync(u){ scheduleRosterPush(); return storageSet(USERS_KEY, JSON.stringify(u)); }
 async function loadActiveUserIdAsync(){ return await storageGet(ACTIVE_USER_KEY); }
-function saveActiveUserIdAsync(id){ if (!id) return Promise.resolve(); schedulePush(); return storageSet(ACTIVE_USER_KEY, id); }
+function saveActiveUserIdAsync(id){ if (!id) return Promise.resolve(); return storageSet(ACTIVE_USER_KEY, id); } // esto es puramente local: no se sincroniza entre dispositivos, cada uno puede tener un deportista activo distinto
 
 let userDataCache = {}; // { userId: {plans,checks,notes} } — caché en memoria para no repetir lecturas
 
@@ -1254,12 +1254,14 @@ async function loadUserDataAsync(userId){
 }
 function saveUserDataAsync(userId, data){
   userDataCache[userId] = data;
-  schedulePush();
+  scheduleUserPush(userId);
   return storageSet(userDataKey(userId), JSON.stringify(data));
 }
 function deleteUserDataAsync(userId){
   delete userDataCache[userId];
-  schedulePush();
+  if (!applyingRemoteSync && syncCode && syncStatus==='on'){
+    try{ userDocRef(userId).delete(); }catch(e){}
+  }
   return storageDelete(userDataKey(userId));
 }
 function persistUserData(){
@@ -1299,11 +1301,17 @@ let activeUserId = null;
 let lastBackupTs = null;
 
 /* ============== SINCRONIZACIÓN ENTRE DISPOSITIVOS (Firebase) ==============
-   Opcional: si el usuario activa un "código de sincronización", todos sus
-   datos (usuarios, planes, marcas, notas, RM...) se guardan también en una
-   base de datos en la nube (Firestore), y cualquier otro dispositivo con el
+   Opcional: si el usuario activa un "código de sincronización", los datos
+   se guardan también en Firestore, y cualquier otro dispositivo con el
    mismo código lee y escribe los mismos datos, casi en tiempo real. Sin
-   código, la app funciona exactamente igual que antes (solo local). */
+   código, la app funciona exactamente igual que antes (solo local).
+
+   IMPORTANTE (diseño): cada deportista tiene su PROPIO documento en la
+   nube (sync_codes/{code}/users/{userId}), separado de la lista de
+   deportistas (sync_codes/{code}, campo "users"). Un cambio en un
+   dispositivo solo sube el documento del deportista que realmente cambió
+   — nunca "todo junto" — para que dos dispositivos activos a la vez no
+   puedan pisarse el trabajo el uno al otro. */
 const firebaseConfig = {
   apiKey: "AIzaSyAZsCxPgTvFddB5IhDe6hqWtkycykMXAKw",
   authDomain: "mi-plan-halterofilia.firebaseapp.com",
@@ -1316,65 +1324,61 @@ const SYNC_CODE_KEY = 'sync_code_v1';
 let fbDb = null;
 let syncCode = null;
 let syncStatus = 'off'; // 'off' | 'connecting' | 'on' | 'error'
-let syncListenerUnsub = null;
-let syncPushTimer = null;
+let rosterUnsub = null;
+let usersColUnsub = null;
+let rosterPushTimer = null;
+let userPushTimers = {}; // { userId: timeoutId }
 let applyingRemoteSync = false;
 
 function ensureFirebase(){
   if (fbDb) return fbDb;
   try{
-    const app = firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     fbDb = firebase.firestore();
     return fbDb;
   }catch(e){ return null; }
 }
+function rosterDocRef(){ return ensureFirebase().collection('sync_codes').doc(syncCode); }
+function userDocRef(userId){ return rosterDocRef().collection('users').doc(userId); }
 
-async function buildFullSyncSnapshot(){
-  const data = {};
-  for (const u of users){
-    data[u.id] = userDataCache[u.id] || await loadUserDataAsync(u.id);
-  }
-  return { updatedAt: Date.now(), users, activeUserId, data };
+function scheduleRosterPush(){
+  if (applyingRemoteSync) return;
+  if (!syncCode || syncStatus!=='on') return;
+  clearTimeout(rosterPushTimer);
+  rosterPushTimer = setTimeout(pushRosterNow, 1000);
+}
+function scheduleUserPush(userId){
+  if (applyingRemoteSync) return;
+  if (!syncCode || syncStatus!=='on') return;
+  clearTimeout(userPushTimers[userId]);
+  userPushTimers[userId] = setTimeout(()=>pushUserNow(userId), 1000);
+}
+async function pushRosterNow(){
+  if (!syncCode) return;
+  const database = ensureFirebase();
+  if (!database) return;
+  try{ await rosterDocRef().set({ users, updatedAt: Date.now() }); }catch(e){}
+}
+async function pushUserNow(userId){
+  if (!syncCode) return;
+  const database = ensureFirebase();
+  if (!database) return;
+  const data = userDataCache[userId] || await loadUserDataAsync(userId);
+  try{ await userDocRef(userId).set(Object.assign({}, data, { updatedAt: Date.now() })); }catch(e){}
 }
 
-function applyFullSyncSnapshot(snap){
-  if (!snap) return;
+function applyRemoteUserDoc(uid, data){
   applyingRemoteSync = true;
-  users = snap.users || [];
-  activeUserId = (snap.activeUserId && users.find(u=>u.id===snap.activeUserId)) ? snap.activeUserId : ((users[0]&&users[0].id)||null);
-  Object.keys(snap.data || {}).forEach(uid=>{
-    const d = snap.data[uid] || { plans:[], checks:{}, notes:{} };
-    userDataCache[uid] = d;
-    saveUserDataAsync(uid, d);
-  });
-  saveUsersAsync(users);
-  if (activeUserId) saveActiveUserIdAsync(activeUserId);
-  if (activeUserId){
-    const d = userDataCache[activeUserId] || { plans:[], checks:{}, notes:{} };
+  const d = { plans: (data&&data.plans)||[], checks: (data&&data.checks)||{}, notes: (data&&data.notes)||{} };
+  userDataCache[uid] = d;
+  saveUserDataAsync(uid, d);
+  if (uid === activeUserId){
     state.plans = d.plans; state.checks = d.checks; state.notes = d.notes;
     const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
     state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
     state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
   }
   applyingRemoteSync = false;
-  render();
-}
-
-function schedulePush(){
-  if (applyingRemoteSync) return;
-  if (!syncCode || syncStatus!=='on') return;
-  clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(pushToCloudNow, 1200);
-}
-
-async function pushToCloudNow(){
-  if (!syncCode) return;
-  const database = ensureFirebase();
-  if (!database) return;
-  try{
-    const snap = await buildFullSyncSnapshot();
-    await database.collection('sync_codes').doc(syncCode).set(snap);
-  }catch(e){ /* se reintentará en el próximo cambio */ }
 }
 
 async function startSync(code){
@@ -1385,18 +1389,62 @@ async function startSync(code){
   const database = ensureFirebase();
   if (!database){ syncStatus='error'; render(); return; }
   try{
-    const docRef = database.collection('sync_codes').doc(syncCode);
-    const docSnap = await docRef.get();
-    if (docSnap.exists){
-      applyFullSyncSnapshot(docSnap.data());
+    const rosterSnap = await rosterDocRef().get();
+    if (rosterSnap.exists){
+      const rdata = rosterSnap.data();
+      applyingRemoteSync = true;
+      users = rdata.users || [];
+      saveUsersAsync(users);
+      applyingRemoteSync = false;
+      if (!activeUserId || !users.find(u=>u.id===activeUserId)){
+        activeUserId = users[0] ? users[0].id : activeUserId;
+      }
+      // migración: si el documento antiguo (versión previa) traía los
+      // datos embebidos en "data", los usamos como base la primera vez.
+      const legacyData = rdata.data || {};
+      for (const u of users){
+        const uSnap = await userDocRef(u.id).get();
+        if (uSnap.exists){
+          applyRemoteUserDoc(u.id, uSnap.data());
+        } else if (legacyData[u.id]){
+          applyRemoteUserDoc(u.id, legacyData[u.id]);
+          await pushUserNow(u.id); // lo subimos ya a su documento propio
+        } else {
+          applyRemoteUserDoc(u.id, { plans:[], checks:{}, notes:{} });
+        }
+      }
     } else {
-      await pushToCloudNow();
+      // primera vez con este código: subimos lo que ya tenemos localmente
+      await pushRosterNow();
+      for (const u of users){ await pushUserNow(u.id); }
     }
-    if (syncListenerUnsub) syncListenerUnsub();
-    syncListenerUnsub = docRef.onSnapshot(snap=>{
-      if (snap.metadata.hasPendingWrites) return; // eco de nuestra propia escritura
-      applyFullSyncSnapshot(snap.data());
+
+    if (rosterUnsub) rosterUnsub();
+    rosterUnsub = rosterDocRef().onSnapshot(snap=>{
+      if (!snap.exists || snap.metadata.hasPendingWrites) return;
+      const rdata = snap.data();
+      applyingRemoteSync = true;
+      users = rdata.users || users;
+      saveUsersAsync(users);
+      applyingRemoteSync = false;
+      render();
     });
+
+    if (usersColUnsub) usersColUnsub();
+    usersColUnsub = rosterDocRef().collection('users').onSnapshot(snap=>{
+      snap.docChanges().forEach(change=>{
+        if (change.doc.metadata.hasPendingWrites) return;
+        const uid = change.doc.id;
+        if (change.type === 'removed'){
+          delete userDataCache[uid];
+          storageDelete(userDataKey(uid));
+        } else {
+          applyRemoteUserDoc(uid, change.doc.data());
+        }
+      });
+      render();
+    });
+
     await storageSet(SYNC_CODE_KEY, syncCode);
     syncStatus = 'on';
   }catch(e){
@@ -1406,7 +1454,8 @@ async function startSync(code){
 }
 
 function stopSync(){
-  if (syncListenerUnsub){ syncListenerUnsub(); syncListenerUnsub=null; }
+  if (rosterUnsub){ rosterUnsub(); rosterUnsub=null; }
+  if (usersColUnsub){ usersColUnsub(); usersColUnsub=null; }
   syncCode = null;
   syncStatus = 'off';
   storageDelete(SYNC_CODE_KEY);
