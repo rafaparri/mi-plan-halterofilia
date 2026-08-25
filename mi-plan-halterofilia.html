@@ -4096,13 +4096,19 @@ function dayReportData(plan, day){
     return { name: e.name || ('Código '+e.code), setsStr };
   });
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
-  const okSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>{ const r=normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]); return r!==null && r>=4; }).length,0);
-  const badSets = entries.reduce((a,e,exIdx)=>a+e.sets.filter((s,si)=>{ const r=normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]); return r!==null && r<=2; }).length,0);
+  const allRatings = [];
+  entries.forEach((e,exIdx)=>e.sets.forEach((s,si)=>{
+    const r = normalizeCheck(state.checks[checkKey(plan,day,exIdx,si)]);
+    if (r!==null) allRatings.push(r);
+  }));
+  const okSets = allRatings.length; // series marcadas (con cualquier valoración), no solo las de nota alta
+  const badSets = allRatings.filter(r=>r<=2).length; // a vigilar: valoradas mal o muy mal
+  const avgRating = allRatings.length ? allRatings.reduce((a,b)=>a+b,0)/allRatings.length : null;
   return {
     dayName: DAY_NAMES[day],
     week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
     athlete: getActiveUser().name,
-    exLines, totalSets, okSets, badSets,
+    exLines, totalSets, okSets, badSets, avgRating,
     completion: totalSets ? Math.round(100*okSets/totalSets) : null,
     tonnageKg: Math.round(tonnage(plan.days[day])),
     rpe: noteObj.rpe, feeling: noteObj.feeling, note: noteObj.text
@@ -4116,7 +4122,11 @@ function localDaySummary(data){
   if (data.completion !== null){
     bits.push(data.completion===100 ? 'entreno completado al 100%' : ('completó ' + data.completion + '% de las series (' + data.okSets + '/' + data.totalSets + ')'));
   }
-  if (data.badSets) bits.push(data.badSets + (data.badSets===1?' serie fallada':' series falladas'));
+  if (data.avgRating !== null){
+    const info = ratingInfo(Math.round(data.avgRating));
+    bits.push('valoración media ' + (info?info.icon+' ':'') + data.avgRating.toFixed(1) + '/5');
+  }
+  if (data.badSets) bits.push(data.badSets + (data.badSets===1?' serie a vigilar':' series a vigilar'));
   if (data.rpe !== null) bits.push('RPE ' + data.rpe + '/10');
   if (data.feeling) bits.push('sensación ' + (feelingLabel(data.feeling)||'').replace(/^[^\s]+\s/,'').toLowerCase());
   let summary = bits.length ? (bits[0].charAt(0).toUpperCase()+bits[0].slice(1) + (bits.length>1 ? ', ' + bits.slice(1).join(', ') : '') + '.') : '';
@@ -4151,7 +4161,8 @@ function dayReportPlainText(data, memoText){
     lines.push('EJERCICIOS: sin datos registrados este día.');
   }
   lines.push('');
-  lines.push('Series completadas: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : '') + (data.badSets ? ' · ' + data.badSets + ' falladas' : ''));
+  lines.push('Series completadas: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : '') + (data.badSets ? ' · ' + data.badSets + ' a vigilar' : ''));
+  if (data.avgRating !== null) lines.push('Valoración media: ' + data.avgRating.toFixed(1) + '/5');
   lines.push('Tonelaje del día: ' + data.tonnageKg + ' kg');
   lines.push('RPE (esfuerzo percibido): ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar'));
   lines.push('Sensación general: ' + (feelingLabel(data.feeling) || 'sin registrar'));
@@ -4253,7 +4264,11 @@ function reportDataBlock(data){
   } else {
     wrap.appendChild(line('•', 'Sin ejercicios registrados este día.'));
   }
-  wrap.appendChild(line('Series:', data.okSets+'/'+data.totalSets + (data.completion!==null?' ('+data.completion+'%)':'') + (data.badSets?' · '+data.badSets+' malas':'')));
+  wrap.appendChild(line('Series:', data.okSets+'/'+data.totalSets + (data.completion!==null?' ('+data.completion+'%)':'') + (data.badSets?' · '+data.badSets+' a vigilar':'')));
+  if (data.avgRating !== null){
+    const info = ratingInfo(Math.round(data.avgRating));
+    wrap.appendChild(line('Valoración media:', (info?info.icon+' ':'') + data.avgRating.toFixed(1) + '/5'));
+  }
   wrap.appendChild(line('Tonelaje:', data.tonnageKg+' kg'));
   wrap.appendChild(line('RPE:', data.rpe!==null ? data.rpe+'/10' : '—'));
   wrap.appendChild(line('Sensación:', feelingLabel(data.feeling) || '—'));
