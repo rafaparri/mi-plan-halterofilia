@@ -546,29 +546,62 @@ if (window.pdfjsLib){
 /* ============== PARSER ============== */
 function norm(v){ if (v === null || v === undefined) return ''; return String(v).trim(); }
 
-// Reconoce celdas de código de ejercicio, incluyendo combos con aclaraciones
-// de texto libre: "51", "51 con parada +51", "3+21"... Cada trozo separado
-// por "+" empieza por un código y puede llevar detrás una aclaración libre
-// ("con parada", "lento", etc.). Devuelve un array de partes
-// [{code, modifier}] o null si la celda no tiene pinta de código.
+// Reconoce celdas de código de ejercicio en dos formatos:
+// 1) Empieza por un número, admite combos con "+" y aclaraciones libres:
+//    "51", "51 con parada +51", "3+21"...
+// 2) El nombre del ejercicio seguido del código entre paréntesis al final:
+//    "SENTADILLA DELANTE (51)", "JERK TÉCNICO (18)" — común en algunas
+//    plantillas. Cualquier texto de la celda que no forme parte del nombre
+//    oficial del código se guarda como aclaración (p. ej. "TÉCNICO").
+// Devuelve un array de partes [{code, modifier}] o null si la celda no
+// tiene pinta de código.
 function parseCodeCell(codeCell){
   const raw = String(codeCell).trim();
   if (!raw) return null;
-  const segments = raw.split('+').map(s=>s.trim()).filter(Boolean);
-  if (!segments.length) return null;
-  const parts = [];
-  for (const seg of segments){
-    const m = seg.match(/^(\d+)\s*(.*)$/);
-    if (!m) return null; // algún trozo no empieza por un número -> no es un código
-    parts.push({ code: parseInt(m[1],10), modifier: m[2].trim() || null });
+
+  if (/^\d/.test(raw)){
+    const segments = raw.split('+').map(s=>s.trim()).filter(Boolean);
+    if (!segments.length) return null;
+    const parts = [];
+    for (const seg of segments){
+      const m = seg.match(/^(\d+)\s*(.*)$/);
+      if (!m) return null; // algún trozo no empieza por un número -> no es un código
+      parts.push({ code: parseInt(m[1],10), modifier: m[2].trim() || null });
+    }
+    return parts;
   }
-  return parts;
+
+  const trailing = raw.match(/^(.+?)\s*\((\d+)\)\s*$/);
+  if (trailing){
+    const label = trailing[1].trim();
+    const code = parseInt(trailing[2], 10);
+    const officialName = DICT[code];
+    let modifier = null;
+    if (officialName){
+      const upperLabel = label.toUpperCase();
+      const upperOfficial = officialName.toUpperCase();
+      if (upperLabel === upperOfficial){
+        modifier = null;
+      } else if (upperLabel.startsWith(upperOfficial)){
+        modifier = label.slice(officialName.length).trim() || null;
+      } else if (upperLabel.endsWith(upperOfficial)){
+        modifier = label.slice(0, label.length - officialName.length).trim() || null;
+      } else {
+        modifier = label; // el nombre de la celda no coincide con el oficial: se guarda como aclaración
+      }
+    } else {
+      modifier = null;
+    }
+    return [{ code, modifier, rawLabel: label }];
+  }
+
+  return null;
 }
 
 // Construye el nombre visible de un ejercicio (o combo) a partir de sus partes.
 function buildComboName(parts){
   return parts.map(p=>{
-    const base = DICT[p.code] || ('Código ' + p.code);
+    const base = DICT[p.code] || p.rawLabel || ('Código ' + p.code);
     return p.modifier ? (base + ' ' + p.modifier.toUpperCase()) : base;
   }).join(' + ');
 }
