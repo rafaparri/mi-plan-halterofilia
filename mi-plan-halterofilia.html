@@ -4499,20 +4499,20 @@ function reportActionsRow(subject, text){
 
 function reportDataBlock(data){
   const wrap = el('div');
-  wrap.style.cssText = 'background:var(--surface-2);border-radius:10px;padding:14px;';
+  wrap.style.cssText = 'background:var(--surface-2);border-radius:10px;padding:16px;';
 
   const statusRow = el('div');
   const isWatch = data.status.label === 'A vigilar';
-  statusRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:Oswald,sans-serif;font-weight:700;font-size:16px;margin-bottom:12px;letter-spacing:.02em;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
-  statusRow.innerHTML = '<span style="font-size:20px;">'+data.status.icon+'</span> ' + data.status.label.toUpperCase();
+  statusRow.style.cssText = 'display:flex;align-items:center;gap:10px;font-family:Oswald,sans-serif;font-weight:700;font-size:22px;margin-bottom:16px;letter-spacing:.02em;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
+  statusRow.innerHTML = '<span style="font-size:28px;">'+data.status.icon+'</span> ' + data.status.label.toUpperCase();
   wrap.appendChild(statusRow);
 
   const grid = el('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:12px;';
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:16px;';
   const metric = (label, value)=>{
     const m = el('div');
-    m.innerHTML = '<div style="font-family:Inter,sans-serif;color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;">'+label+'</div>' +
-      '<div style="font-family:IBM Plex Mono,monospace;color:var(--chalk);font-weight:700;font-size:15px;margin-top:2px;">'+value+'</div>';
+    m.innerHTML = '<div style="font-family:Inter,sans-serif;color:var(--muted-2);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;">'+label+'</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;color:var(--chalk);font-weight:700;font-size:22px;margin-top:3px;">'+value+'</div>';
     return m;
   };
   grid.appendChild(metric('Cumplimiento', data.okSets+'/'+data.totalSets+(data.completion!==null?' ('+data.completion+'%)':'')));
@@ -4527,13 +4527,13 @@ function reportDataBlock(data){
 
   if (data.watchList.length){
     const watchBox = el('div');
-    watchBox.style.cssText = 'background:var(--surface);border:1.5px solid var(--red);border-radius:8px;padding:10px 12px;margin-bottom:12px;';
+    watchBox.style.cssText = 'background:var(--surface);border:2px solid var(--red);border-radius:10px;padding:12px 14px;margin-bottom:16px;';
     const wTitle = el('div', null, '⚠️ A VIGILAR');
-    wTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:12px;color:var(--red);margin-bottom:6px;letter-spacing:.02em;';
+    wTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--red);margin-bottom:8px;letter-spacing:.02em;';
     watchBox.appendChild(wTitle);
     data.watchList.forEach(w=>{
       const wl = el('div');
-      wl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--chalk);line-height:1.7;';
+      wl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;color:var(--chalk);line-height:1.7;';
       wl.textContent = w.icon + ' ' + w.name + ': ' + w.text;
       watchBox.appendChild(wl);
     });
@@ -4541,24 +4541,25 @@ function reportDataBlock(data){
   }
 
   const exTitle = el('div', null, 'EJERCICIOS');
-  exTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:10.5px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:6px;';
+  exTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:8px;';
   wrap.appendChild(exTitle);
   if (data.exLines.length){
     data.exLines.forEach(l=>{
       const exRow = el('div');
-      exRow.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;line-height:1.7;color:var(--chalk);margin-bottom:2px;';
+      exRow.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;line-height:1.8;color:var(--chalk);margin-bottom:6px;';
       exRow.innerHTML = '<b>'+l.name+'</b>: '+l.setsStr;
       wrap.appendChild(exRow);
     });
   } else {
     const empty = el('div','ex-hint','Sin ejercicios registrados este día.');
+    empty.style.fontSize = '15px';
     wrap.appendChild(empty);
   }
 
   if (data.note){
     const noteBox = el('div');
-    noteBox.style.cssText = 'margin-top:12px;padding-top:10px;border-top:1px solid var(--surface-3);font-family:Inter,sans-serif;font-size:12.5px;color:var(--muted);line-height:1.5;';
-    noteBox.innerHTML = '<span style="color:var(--muted-2);font-weight:600;">Nota del atleta: </span>' + data.note.replace(/\n/g,'<br>');
+    noteBox.style.cssText = 'margin-top:16px;padding-top:14px;border-top:1px solid var(--surface-3);font-family:Inter,sans-serif;font-size:17px;color:var(--chalk);line-height:1.6;';
+    noteBox.innerHTML = '<div style="color:var(--muted-2);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Nota del atleta</div>' + data.note.replace(/\n/g,'<br>');
     wrap.appendChild(noteBox);
   }
 
@@ -4575,17 +4576,19 @@ function renderDayReportOverlay(){
   sheet.appendChild(reportDataBlock(r.data));
 
   const memoWrap = el('div');
-  memoWrap.style.cssText = 'margin-top:14px;';
+  memoWrap.style.cssText = 'margin-top:16px;';
   if (r.memo.loading){
-    memoWrap.appendChild(el('div','ex-hint','Generando memo…'));
+    const l = el('div','ex-hint','Generando memo…'); l.style.fontSize='15px'; memoWrap.appendChild(l);
   } else if (r.memo.error){
     const err = el('div', null, r.memo.error);
-    err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
+    err.style.cssText = 'color:var(--red);font-size:15px;line-height:1.5;';
     memoWrap.appendChild(err);
   } else if (r.memo.text){
-    memoWrap.appendChild(el('div','day-count','LECTURA DEL ENTRENADOR'));
+    const title = el('div', null, 'LECTURA DEL ENTRENADOR');
+    title.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--muted-2);letter-spacing:.03em;';
+    memoWrap.appendChild(title);
     const txt = el('div', null, r.memo.text);
-    txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
+    txt.style.cssText = 'font-size:17px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:8px;';
     memoWrap.appendChild(txt);
   }
   sheet.appendChild(memoWrap);
@@ -4611,33 +4614,37 @@ function renderWeekReportOverlay(plan){
   if (r.status){
     const isWatch = r.status.label.indexOf('vigilar') !== -1;
     const statusRow = el('div', null, r.status.icon + ' ' + r.status.label.toUpperCase());
-    statusRow.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:.02em;margin-bottom:14px;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
+    statusRow.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:22px;letter-spacing:.02em;margin-bottom:16px;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
     sheet.appendChild(statusRow);
   }
 
   r.perDay.forEach(d=>{
     const dCard = el('div');
-    dCard.style.cssText = 'margin-bottom:10px;';
-    dCard.appendChild(el('div','day-count', d.status.icon + '  ' + d.dayName.toUpperCase()));
+    dCard.style.cssText = 'margin-bottom:14px;';
+    const dHead = el('div', null, d.status.icon + '  ' + d.dayName.toUpperCase());
+    dHead.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:6px;';
+    dCard.appendChild(dHead);
     dCard.appendChild(reportDataBlock(d));
     sheet.appendChild(dCard);
   });
   if (!r.perDay.length){
-    sheet.appendChild(el('div','empty-day','Sin datos esta semana.'));
+    const e2 = el('div','empty-day','Sin datos esta semana.'); e2.style.fontSize='15px'; sheet.appendChild(e2);
   }
 
   const memoWrap = el('div');
-  memoWrap.style.cssText = 'margin-top:6px;';
+  memoWrap.style.cssText = 'margin-top:8px;';
   if (r.memo.loading){
-    memoWrap.appendChild(el('div','ex-hint','Generando resumen…'));
+    const l = el('div','ex-hint','Generando resumen…'); l.style.fontSize='15px'; memoWrap.appendChild(l);
   } else if (r.memo.error){
     const err = el('div', null, r.memo.error);
-    err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
+    err.style.cssText = 'color:var(--red);font-size:15px;line-height:1.5;';
     memoWrap.appendChild(err);
   } else if (r.memo.text){
-    memoWrap.appendChild(el('div','day-count','LECTURA DEL ENTRENADOR'));
+    const title = el('div', null, 'LECTURA DEL ENTRENADOR');
+    title.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--muted-2);letter-spacing:.03em;';
+    memoWrap.appendChild(title);
     const txt = el('div', null, r.memo.text);
-    txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
+    txt.style.cssText = 'font-size:17px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:8px;';
     memoWrap.appendChild(txt);
   }
   sheet.appendChild(memoWrap);
