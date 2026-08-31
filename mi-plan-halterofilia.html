@@ -2011,10 +2011,12 @@ function el(tag, cls, html){
 function renderUpload(){
   const wrap = el('div','upload-screen');
   wrap.appendChild(el('div','upload-mark'));
-  wrap.appendChild(el('h1','brand','Mi Plan'));
-  wrap.appendChild(el('p','tagline','Sube el Excel, el PDF o una foto que te manda tu entrenador y lo convierto en tu plan del día, con los ejercicios traducidos y listos para marcar.'));
-
+  wrap.appendChild(el('h1','brand','Programación semanal'));
   const activeUser = getActiveUser();
+  const userNameBig = el('div', null, activeUser.name);
+  userNameBig.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:24px;color:var(--yellow-deep);text-transform:uppercase;letter-spacing:.02em;margin-top:-6px;margin-bottom:16px;';
+  wrap.appendChild(userNameBig);
+  wrap.appendChild(el('p','tagline','Sube el Excel, el PDF o una foto que te manda tu entrenador y lo convierto en tu plan del día, con los ejercicios traducidos y listos para marcar.'));
   const userBadge = el('div');
   userBadge.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--surface-3);border-radius:20px;padding:6px 14px 6px 6px;margin-bottom:22px;cursor:pointer;';
   const avatar = el('div', null, (activeUser.name||'?').trim().charAt(0).toUpperCase());
@@ -2210,7 +2212,10 @@ function renderApp(plan){
   const top = el('div','topbar');
   const row = el('div','topbar-row');
   const left = el('div');
-  left.appendChild(el('div','athlete-name', plan.customName || plan.meta.athlete || 'Mi plan'));
+  left.appendChild(el('div','athlete-name', plan.customName || 'Programación semanal'));
+  const userNameLine = el('div', null, getActiveUser().name);
+  userNameLine.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:20px;color:var(--yellow-deep);text-transform:uppercase;letter-spacing:.02em;margin-top:2px;';
+  left.appendChild(userNameLine);
   const metaBits = [];
   if (plan.meta.jornada) metaBits.push(plan.meta.jornada);
   left.appendChild(el('div','meta-line', metaBits.join(' · ') || 'Plan de entrenamiento'));
@@ -4430,7 +4435,7 @@ function generateDayReport(plan, day){
 
 function weekReportPlainText(plan, perDay, memoText, status){
   const lines = [];
-  lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Mi plan'));
+  lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Programación semanal'));
   lines.push('Atleta: ' + getActiveUser().name);
   if (status) lines.push('Estado: ' + status.icon + ' ' + status.label.toUpperCase());
   lines.push('');
