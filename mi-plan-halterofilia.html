@@ -2254,7 +2254,7 @@ function renderExerciseCard(plan, day, entry, idx){
     const chip = el('div','chip');
     if (rinfo){ chip.style.cssText = 'background:'+rinfo.color+';border-color:'+rinfo.color+';color:#fff;'; }
     const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
-    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay + (rinfo ? ' ' + rinfo.icon : '');
+    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay + (rinfo ? ' ' + rinfo.icon : '') + (s.edited ? ' ✏️' : '');
     if (rinfo) chip.querySelector('b').style.color = '#fff';
     chip.onclick = (e)=>{ e.stopPropagation(); openFlashcards(day, idx, si); };
     chips.appendChild(chip);
@@ -2405,7 +2405,7 @@ function deleteSetFromEntry(plan, day, exIdx, setIdx){
 
 /* ---- Flashcard viewer ---- */
 function openFlashcards(day, exIdx, cardIdx){
-  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null };
+  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false };
   render();
 }
 
@@ -2439,6 +2439,7 @@ function renderFlashcardOverlay(plan){
 
   // navegación con animación de "tarjeta física" que se descarta hacia un lado
   function goToCard(newIdx, dir){
+    state.flashcard.editingSet = false;
     const c = cardArea.querySelector('.fc-card');
     if (c){
       c.style.animation = 'none';
@@ -2488,6 +2489,56 @@ function renderFlashcardOverlay(plan){
     const status = normalizeCheck(state.checks[key]);
 
     const card = el('div','fc-card'+dirClass);
+
+    if (state.flashcard.editingSet){
+      card.appendChild(el('div','fc-final-title','Editar este peso'));
+      const form = el('div','fc-newweight-form');
+      const repsVal = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '');
+      const mkField = (label, id, width, value, inputMode)=>{
+        const wrapF = el('div','fc-field');
+        wrapF.appendChild(el('div','fc-field-label', label));
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.inputMode = inputMode || 'numeric';
+        inp.value = value===null||value===undefined ? '' : value;
+        inp.style.width = width+'px';
+        inp.className = 'fc-field-input';
+        inp.id = 'edit-set-'+id;
+        wrapF.appendChild(inp);
+        return wrapF;
+      };
+      form.appendChild(mkField('KG','kg',70, s.kg));
+      form.appendChild(mkField('Series','series',60, s.series));
+      form.appendChild(mkField('Repes','reps',60, repsVal, 'text'));
+      card.appendChild(form);
+
+      const editActions = el('div','fc-final-actions');
+      const cancelBtn = el('button','mark-btn','Cancelar');
+      cancelBtn.onclick = ()=>{ state.flashcard.editingSet = false; render(); };
+      const saveEditBtn = el('button','mark-btn ok selected','Guardar cambios');
+      saveEditBtn.onclick = ()=>{
+        const kgVal = document.getElementById('edit-set-kg').value.trim();
+        const serVal = document.getElementById('edit-set-series').value.trim();
+        const repVal = document.getElementById('edit-set-reps').value.trim();
+        const newKg = Number(kgVal.replace(',','.'));
+        if (isNaN(newKg) || newKg<=0) return;
+        const repsInfo = parseRepsCell(repVal);
+        s.kg = newKg;
+        s.series = serVal==='' ? null : parseInt(serVal,10);
+        s.reps = repsInfo.total;
+        s.repsParts = repsInfo.parts;
+        s.edited = true;
+        persistUserData();
+        state.flashcard.editingSet = false;
+        render();
+      };
+      editActions.appendChild(cancelBtn); editActions.appendChild(saveEditBtn);
+      card.appendChild(editActions);
+      cardArea.appendChild(card);
+      wrap.appendChild(cardArea);
+      overlay.appendChild(wrap);
+      return overlay;
+    }
+
     card.appendChild(el('div','fc-kg', s.kg+' kg'));
     const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
     card.appendChild(el('div','fc-setrep', (s.series||'?')+' serie'+((s.series===1)?'':'s')+' × '+repDisplay+' rep'+((s.reps===1)?'':'s')));
@@ -2500,6 +2551,11 @@ function renderFlashcardOverlay(plan){
         return (n!==null&&n!==undefined ? n+'× ' : '') + base + (p.modifier ? ' ('+p.modifier+')' : '');
       }).join(' + ');
       card.appendChild(comboHint);
+    }
+    if (s.edited){
+      const editedBadge = el('div', null, '✏️ Modificado a mano');
+      editedBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:11.5px;color:var(--yellow-deep);text-align:center;margin-top:-8px;';
+      card.appendChild(editedBadge);
     }
 
     const markRow = el('div','fc-mark-row');
@@ -2519,6 +2575,21 @@ function renderFlashcardOverlay(plan){
     });
     card.appendChild(markRow);
 
+    const secondaryRow = el('div');
+    secondaryRow.style.cssText = 'display:flex;gap:16px;margin-top:6px;';
+    const editSetBtn = el('button', null, '✏️ Editar');
+    editSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;';
+    editSetBtn.onclick = ()=>{ state.flashcard.editingSet = true; render(); };
+    secondaryRow.appendChild(editSetBtn);
+
+    if (state.flashcard.confirmDeleteSetIdx !== cardIdx){
+      const delSetBtn = el('button', null, '🗑 Borrar');
+      delSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;';
+      delSetBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = cardIdx; render(); };
+      secondaryRow.appendChild(delSetBtn);
+    }
+    card.appendChild(secondaryRow);
+
     if (state.flashcard.confirmDeleteSetIdx === cardIdx){
       const confirmRow = el('div');
       confirmRow.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap;justify-content:center;';
@@ -2537,11 +2608,6 @@ function renderFlashcardOverlay(plan){
       noBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = null; render(); };
       confirmRow.appendChild(txt); confirmRow.appendChild(yesBtn); confirmRow.appendChild(noBtn);
       card.appendChild(confirmRow);
-    } else {
-      const delSetBtn = el('button', null, '🗑 Borrar este peso');
-      delSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;margin-top:4px;';
-      delSetBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = cardIdx; render(); };
-      card.appendChild(delSetBtn);
     }
 
     cardArea.appendChild(card);
