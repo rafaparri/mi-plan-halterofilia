@@ -606,22 +606,57 @@ function buildComboName(parts){
   }).join(' + ');
 }
 
-// Reconoce celdas de repeticiones simples ("5") o repartidas entre las partes
-// de un combo ("2+1" = 2 repes de la primera parte, 1 de la segunda).
+// Reconoce celdas de repeticiones simples ("5"), repartidas entre las
+// partes de un combo ("2+1"), o con una anotación de descanso pegada
+// (p.ej. "1 25\"" = 1 repe, 25 segundos de descanso hasta la siguiente).
+// Si no encaja en ningún formato limpio, se conserva el texto tal cual
+// para poder mostrarlo (no se descarta la información).
 function parseRepsCell(v){
-  if (v === null || v === undefined) return { total:null, parts:null };
+  if (v === null || v === undefined) return { total:null, parts:null, raw:null, restSeconds:null };
   const raw = String(v).trim();
-  if (!raw) return { total:null, parts:null };
+  if (!raw) return { total:null, parts:null, raw:null, restSeconds:null };
   if (/^\d+([.,]\d+)?$/.test(raw)){
-    return { total: Number(raw.replace(',','.')), parts: null };
+    return { total: Number(raw.replace(',','.')), parts: null, raw:null, restSeconds:null };
   }
   if (raw.includes('+')){
     const bits = raw.split('+').map(s=>s.trim());
     const nums = bits.map(b=> /^\d+([.,]\d+)?$/.test(b) ? Number(b.replace(',','.')) : null);
-    if (nums.some(n=>n===null)) return { total:null, parts:null };
-    return { total: nums.reduce((a,b)=>a+b,0), parts: nums };
+    if (!nums.some(n=>n===null)){
+      return { total: nums.reduce((a,b)=>a+b,0), parts: nums, raw:null, restSeconds:null };
+    }
   }
-  return { total:null, parts:null };
+  const restMatch = raw.match(/^(\d+)\s+(\d+)\s*"\s*$/);
+  if (restMatch){
+    return { total: parseInt(restMatch[1],10), parts:null, raw, restSeconds: parseInt(restMatch[2],10) };
+  }
+  const firstNum = raw.match(/\d+/);
+  return { total: firstNum ? parseInt(firstNum[0],10) : null, parts:null, raw, restSeconds:null };
+}
+
+// Texto a mostrar para el peso de una serie: el número normal, o el texto
+// literal si era una anotación no numérica (p.ej. "??" = serie opcional).
+function kgDisplayText(s){
+  if (s.kg !== null && s.kg !== undefined) return s.kg + 'kg';
+  return (s.kgRaw || '?');
+}
+// Texto a mostrar para las repeticiones: repartidas, la anotación literal
+// guardada tal cual, o el número simple.
+function repDisplayText(s){
+  if (s.repsParts) return s.repsParts.join('+');
+  if (s.repsRaw) return s.repsRaw;
+  return s.reps ?? '?';
+}
+// Texto compacto de una serie completa: "85kg×1×3", con el remate de
+// clúster (descanso corto + repe extra a menos peso) si lo tiene:
+// "85kg×1×3 -25"- 80kg×1×1".
+function setDisplayText(s){
+  let text = kgDisplayText(s) + '×' + (s.series||'?') + '×' + repDisplayText(s);
+  if (s.cluster){
+    const c = s.cluster;
+    const restLabel = c.restSeconds!=null ? (c.restSeconds+'"') : (c.raw || '');
+    text += (restLabel ? ' -'+restLabel+'- ' : ' - ') + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c);
+  }
+  return text;
 }
 
 function parseRows(rows){
@@ -707,20 +742,47 @@ function parseRows(rows){
     }
 
     if (entry.type === 'exercise'){
+      const groupToSetIdx = {};
       for (let g=0; g<numGroups; g++){
         const kgIdx = groupStart + g*3;
         const kg = row[kgIdx], s = row[kgIdx+1], rr = row[kgIdx+2];
-        if (kg !== null && kg !== undefined && kg !== '' && !isNaN(Number(kg))){
-          const repsInfo = parseRepsCell(rr);
-          entry.sets.push({
-            kg: Number(kg),
-            series: (s!==null&&s!==undefined&&s!=='' && !isNaN(Number(s)))? Number(s): null,
-            reps: repsInfo.total,
-            repsParts: repsInfo.parts
-          });
-        }
+        const kgStr = norm(kg);
+        if (kgStr === '') continue;
+        const repsInfo = parseRepsCell(rr);
+        const seriesVal = (s!==null&&s!==undefined&&s!=='' && !isNaN(Number(s)))? Number(s): null;
+        const setObj = !isNaN(Number(kg))
+          ? { kg: Number(kg), series: seriesVal, reps: repsInfo.total, repsParts: repsInfo.parts, repsRaw: repsInfo.raw, restSeconds: repsInfo.restSeconds }
+          : { kg: null, kgRaw: kgStr, optional: true, series: seriesVal, reps: repsInfo.total, repsParts: repsInfo.parts, repsRaw: repsInfo.raw, restSeconds: repsInfo.restSeconds };
+        groupToSetIdx[g] = entry.sets.length;
+        entry.sets.push(setObj);
       }
       if (entry.sets.length === 0) continue;
+
+      // Fila de continuación: sin día ni código, pero con pesos en alguna
+      // de las mismas columnas — es el remate en clúster de esa serie
+      // (p.ej. una repe extra a menos peso tras un descanso corto), no un
+      // ejercicio suelto sin nombre.
+      const nextRow = rows[r+1] || [];
+      const nextDayCell = norm(nextRow[dayColIdx]);
+      const nextCodeCell = norm(nextRow[codeColIdx]);
+      if (!nextDayCell && !nextCodeCell){
+        let merged = false;
+        for (let g=0; g<numGroups; g++){
+          if (groupToSetIdx[g] === undefined) continue;
+          const kgIdx = groupStart + g*3;
+          const kg = nextRow[kgIdx], s = nextRow[kgIdx+1], rr = nextRow[kgIdx+2];
+          const kgStr = norm(kg);
+          if (kgStr === '') continue;
+          const repsInfo = parseRepsCell(rr);
+          const seriesVal = (s!==null&&s!==undefined&&s!=='' && !isNaN(Number(s)))? Number(s): null;
+          const clusterObj = !isNaN(Number(kg))
+            ? { kg: Number(kg), series: seriesVal, reps: repsInfo.total, repsParts: repsInfo.parts, repsRaw: repsInfo.raw, restSeconds: repsInfo.restSeconds }
+            : { kg: null, kgRaw: kgStr, optional: true, series: seriesVal, reps: repsInfo.total, repsParts: repsInfo.parts, repsRaw: repsInfo.raw, restSeconds: repsInfo.restSeconds };
+          entry.sets[groupToSetIdx[g]].cluster = clusterObj;
+          merged = true;
+        }
+        if (merged) r++;
+      }
     }
 
     days[currentDay].push(entry);
@@ -2296,8 +2358,13 @@ function renderExerciseCard(plan, day, entry, idx){
     const rinfo = ratingInfo(rating);
     const chip = el('div','chip');
     if (rinfo){ chip.style.cssText = 'background:'+rinfo.color+';border-color:'+rinfo.color+';color:#fff;'; }
-    const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
-    chip.innerHTML = '<b>'+s.kg+'kg</b> · ' + (s.series||'?') + '×' + repDisplay + (rinfo ? ' ' + rinfo.icon : '') + (s.edited ? ' ✏️' : '');
+    let clusterHtml = '';
+    if (s.cluster){
+      const c = s.cluster;
+      const restLabel = c.restSeconds!=null ? (c.restSeconds+'"') : (c.raw || '');
+      clusterHtml = ' <span style="opacity:.85;">' + (restLabel?'-'+restLabel+'-':'-') + ' ' + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c) + '</span>';
+    }
+    chip.innerHTML = '<b>'+kgDisplayText(s)+'</b> · ' + (s.series||'?') + '×' + repDisplayText(s) + clusterHtml + (rinfo ? ' ' + rinfo.icon : '') + (s.optional ? ' 🔓' : '') + (s.edited ? ' ✏️' : '');
     if (rinfo) chip.querySelector('b').style.color = '#fff';
     chip.onclick = (e)=>{ e.stopPropagation(); openFlashcards(day, idx, si); };
     chips.appendChild(chip);
@@ -2582,9 +2649,22 @@ function renderFlashcardOverlay(plan){
       return overlay;
     }
 
-    card.appendChild(el('div','fc-kg', s.kg+' kg'));
-    const repDisplay = s.repsParts ? s.repsParts.join('+') : (s.reps ?? '?');
-    card.appendChild(el('div','fc-setrep', (s.series||'?')+' serie'+((s.series===1)?'':'s')+' × '+repDisplay+' rep'+((s.reps===1)?'':'s')));
+    card.appendChild(el('div','fc-kg', kgDisplayText(s)));
+    if (s.optional){
+      const optBadge = el('div', null, '🔓 Serie opcional (según cómo vayas)');
+      optBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:14px;color:var(--yellow-deep);text-align:center;margin-top:-14px;font-weight:600;';
+      card.appendChild(optBadge);
+    }
+    const repDisplay = repDisplayText(s);
+    card.appendChild(el('div','fc-setrep', (s.series||'?')+' serie'+((s.series===1)?'':'s')+' × '+repDisplay+(s.reps===1&&!s.repsRaw?' rep':' reps')));
+    if (s.cluster){
+      const c = s.cluster;
+      const restLabel = c.restSeconds!=null ? (c.restSeconds+'"') : (c.raw || '');
+      const clusterLine = el('div');
+      clusterLine.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;color:var(--muted);text-align:center;margin-top:-8px;';
+      clusterLine.textContent = (restLabel ? 'Descanso '+restLabel+' → ' : '→ ') + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c);
+      card.appendChild(clusterLine);
+    }
     if (entry.parts && entry.parts.length > 1){
       const comboHint = el('div');
       comboHint.style.cssText = 'font-family:Inter,sans-serif;font-size:13px;color:var(--muted);text-align:center;margin-top:-8px;';
@@ -4203,8 +4283,7 @@ function dayReportData(plan, day){
       const st = normalizeCheck(state.checks[checkKey(plan, day, exIdx, si)]);
       const info = ratingInfo(st);
       const mark = info ? info.icon : '·';
-      const reps = s.repsParts ? s.repsParts.join('+') : (s.reps??'?');
-      return s.kg+'kg×'+(s.series||'?')+'x'+reps+mark;
+      return setDisplayText(s)+mark;
     }).join('  ');
     return { name: e.name || ('Código '+e.code), setsStr };
   });
