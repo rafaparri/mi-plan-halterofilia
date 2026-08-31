@@ -2103,6 +2103,16 @@ function handleFile(file){
         return;
       }
       const meta = result.meta || {};
+      // Si el propio nombre del archivo indica la semana (p.ej.
+      // "Plan_Entrenamiento_Semana_10.xlsx"), se usa ese en vez del
+      // detectado dentro de la hoja, que en algunas plantillas puede
+      // confundirse con otra celda que también dice "Semana" (como la
+      // marca de esta semana en la tabla de máximos).
+      const weekFromName = (file.name || '').match(/semana[\s_-]*n?[ºo°]?\s*(\d{1,3})/i);
+      if (weekFromName){
+        const n = parseInt(weekFromName[1], 10);
+        if (!isNaN(n)) meta.week = n;
+      }
       const id = planId(meta);
       const plan = { id, meta, days: result.days, uploadedAt: Date.now(), needsReview: !!result.needsReview };
       const existingIdx = state.plans.findIndex(p=>p.id===id);
