@@ -2652,7 +2652,7 @@ function renderFlashcardOverlay(plan){
     card.appendChild(el('div','fc-kg', kgDisplayText(s)));
     if (s.optional){
       const optBadge = el('div', null, '🔓 Serie opcional (según cómo vayas)');
-      optBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:14px;color:var(--yellow-deep);text-align:center;margin-top:-14px;font-weight:600;';
+      optBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:18px;color:var(--yellow-deep);text-align:center;font-weight:700;';
       card.appendChild(optBadge);
     }
     const repDisplay = repDisplayText(s);
@@ -2661,13 +2661,13 @@ function renderFlashcardOverlay(plan){
       const c = s.cluster;
       const restLabel = c.restSeconds!=null ? (c.restSeconds+'"') : (c.raw || '');
       const clusterLine = el('div');
-      clusterLine.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;color:var(--muted);text-align:center;margin-top:-8px;';
+      clusterLine.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:clamp(22px,6vw,28px);font-weight:700;color:var(--chalk);text-align:center;';
       clusterLine.textContent = (restLabel ? 'Descanso '+restLabel+' → ' : '→ ') + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c);
       card.appendChild(clusterLine);
     }
     if (entry.parts && entry.parts.length > 1){
       const comboHint = el('div');
-      comboHint.style.cssText = 'font-family:Inter,sans-serif;font-size:13px;color:var(--muted);text-align:center;margin-top:-8px;';
+      comboHint.style.cssText = 'font-family:Inter,sans-serif;font-size:18px;font-weight:600;color:var(--muted);text-align:center;';
       comboHint.textContent = entry.parts.map((p,i)=>{
         const n = s.repsParts ? s.repsParts[i] : null;
         const base = DICT[p.code] || ('Cód. '+p.code);
@@ -2677,7 +2677,7 @@ function renderFlashcardOverlay(plan){
     }
     if (s.edited){
       const editedBadge = el('div', null, '✏️ Modificado a mano');
-      editedBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:11.5px;color:var(--yellow-deep);text-align:center;margin-top:-8px;';
+      editedBadge.style.cssText = 'font-family:Inter,sans-serif;font-size:16px;font-weight:600;color:var(--yellow-deep);text-align:center;';
       card.appendChild(editedBadge);
     }
 
