@@ -4275,6 +4275,35 @@ function dayCombinedNote(plan, day){
   };
 }
 
+// Estado del día de un vistazo, como lo vería un entrenador al abrir el
+// parte: si hay algo que vigilar, o si la sesión fue sólida.
+function dayStatus(data){
+  if (data.totalSets === 0) return { icon:'—', label:'Sin datos' };
+  const hasBad = data.watchList.length > 0;
+  const alarmingReadiness = (data.rpe!==null && data.rpe>=9) || data.feeling==='mal';
+  const lowCompletion = data.completion!==null && data.completion<80;
+  if (hasBad || alarmingReadiness || lowCompletion) return { icon:'⚠️', label:'A vigilar' };
+  if (data.completion===100 && (data.avgRating===null || data.avgRating>=3.5)) return { icon:'✓', label:'Sesión sólida' };
+  return { icon:'•', label:'Normal' };
+}
+
+// Series concretas que salieron mal (valoración 1-2), con su ejercicio,
+// para que el entrenador vaya directo a lo importante sin leer todo el
+// detalle línea a línea.
+function dayWatchList(plan, day, entries){
+  const list = [];
+  entries.forEach((e, exIdx)=>{
+    e.sets.forEach((s, si)=>{
+      const r = normalizeCheck(state.checks[checkKey(plan, day, exIdx, si)]);
+      if (r!==null && r<=2){
+        const info = ratingInfo(r);
+        list.push({ name: e.name || ('Código '+e.code), text: setDisplayText(s), icon: info?info.icon:'' });
+      }
+    });
+  });
+  return list;
+}
+
 function dayReportData(plan, day){
   const noteObj = dayCombinedNote(plan, day);
   const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
@@ -4287,6 +4316,7 @@ function dayReportData(plan, day){
     }).join('  ');
     return { name: e.name || ('Código '+e.code), setsStr };
   });
+  const watchList = dayWatchList(plan, day, entries);
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
   const allRatings = [];
   entries.forEach((e,exIdx)=>e.sets.forEach((s,si)=>{
@@ -4294,20 +4324,23 @@ function dayReportData(plan, day){
     if (r!==null) allRatings.push(r);
   }));
   const okSets = allRatings.length; // series marcadas (con cualquier valoración), no solo las de nota alta
-  const badSets = allRatings.filter(r=>r<=2).length; // a vigilar: valoradas mal o muy mal
+  const badSets = watchList.length; // a vigilar: valoradas mal o muy mal
   const avgRating = allRatings.length ? allRatings.reduce((a,b)=>a+b,0)/allRatings.length : null;
-  return {
+  const data = {
     dayName: DAY_NAMES[day],
     week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
     athlete: getActiveUser().name,
-    exLines, totalSets, okSets, badSets, avgRating,
+    exLines, watchList, totalSets, okSets, badSets, avgRating,
     completion: totalSets ? Math.round(100*okSets/totalSets) : null,
     tonnageKg: Math.round(tonnage(plan.days[day])),
     rpe: noteObj.rpe, feeling: noteObj.feeling, note: noteObj.text
   };
+  data.status = dayStatus(data);
+  return data;
 }
 
-// Resumen de una línea, generado localmente a partir de los datos (sin IA).
+// Resumen de una línea, generado localmente a partir de los datos (sin IA),
+// con tono de lectura de entrenador: qué pasó y qué habría que vigilar.
 function localDaySummary(data){
   if (data.totalSets === 0 && data.rpe===null && data.feeling===null && !data.note) return null;
   const bits = [];
@@ -4318,12 +4351,24 @@ function localDaySummary(data){
     const info = ratingInfo(Math.round(data.avgRating));
     bits.push('valoración media ' + (info?info.icon+' ':'') + data.avgRating.toFixed(1) + '/5');
   }
-  if (data.badSets) bits.push(data.badSets + (data.badSets===1?' serie a vigilar':' series a vigilar'));
   if (data.rpe !== null) bits.push('RPE ' + data.rpe + '/10');
   if (data.feeling) bits.push('sensación ' + (feelingLabel(data.feeling)||'').replace(/^[^\s]+\s/,'').toLowerCase());
   let summary = bits.length ? (bits[0].charAt(0).toUpperCase()+bits[0].slice(1) + (bits.length>1 ? ', ' + bits.slice(1).join(', ') : '') + '.') : '';
-  if (data.note) summary += (summary?' ':'') + 'Nota: "' + data.note.split('\n')[0] + (data.note.includes('\n')?'…':'') + '"';
+  if (data.watchList.length){
+    const uniqueNames = data.watchList.map(w=>w.name).filter((v,i,a)=>a.indexOf(v)===i);
+    summary += (summary?' ':'') + 'Antes de la próxima sesión, revisar: ' + uniqueNames.join(', ') + '.';
+  }
+  if (data.note) summary += (summary?' ':'') + ' Nota del atleta: "' + data.note.split('\n')[0] + (data.note.includes('\n')?'…':'') + '"';
   return summary || null;
+}
+
+function weekStatus(perDay){
+  const withData = perDay.filter(d=>d.totalSets>0);
+  if (!withData.length) return { icon:'—', label:'Sin datos' };
+  const watchDays = withData.filter(d=>d.status.label==='A vigilar');
+  if (watchDays.length >= Math.ceil(withData.length/2)) return { icon:'⚠️', label:'Semana a vigilar' };
+  if (watchDays.length > 0) return { icon:'•', label:'Algún punto a vigilar' };
+  return { icon:'✓', label:'Semana sólida' };
 }
 
 function localWeekSummary(perDay){
@@ -4334,10 +4379,11 @@ function localWeekSummary(perDay){
   const totalTon = withData.reduce((a,d)=>a+d.tonnageKg,0);
   const rpes = withData.map(d=>d.rpe).filter(r=>r!==null);
   const avgRpe = rpes.length ? Math.round(rpes.reduce((a,b)=>a+b,0)/rpes.length) : null;
-  const worstDays = withData.filter(d=>d.feeling==='mal' || (d.rpe!==null && d.rpe>=9));
+  const worstDays = withData.filter(d=>d.status.label==='A vigilar');
   let summary = withData.length + ' días entrenados, ' + totalOk + '/' + totalSets + ' series completadas (' + Math.round(100*totalOk/totalSets) + '%), ' + totalTon + 'kg de tonelaje total.';
   if (avgRpe !== null) summary += ' RPE medio de la semana: ' + avgRpe + '/10.';
   if (worstDays.length) summary += ' Días a vigilar: ' + worstDays.map(d=>d.dayName).join(', ') + '.';
+  else summary += ' Sin días marcados a vigilar esta semana.';
   return summary;
 }
 
@@ -4345,6 +4391,18 @@ function dayReportPlainText(data, memoText){
   const lines = [];
   lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.week!==null ? ' · Semana '+data.week : ''));
   lines.push('Atleta: ' + data.athlete);
+  lines.push('Estado: ' + data.status.icon + ' ' + data.status.label.toUpperCase());
+  lines.push('');
+  lines.push('Cumplimiento: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : ''));
+  if (data.avgRating !== null) lines.push('Valoración media: ' + data.avgRating.toFixed(1) + '/5');
+  lines.push('Tonelaje: ' + data.tonnageKg + ' kg');
+  lines.push('RPE (esfuerzo percibido): ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar'));
+  lines.push('Sensación general: ' + (feelingLabel(data.feeling) || 'sin registrar'));
+  if (data.watchList.length){
+    lines.push('');
+    lines.push('A VIGILAR:');
+    data.watchList.forEach(w=> lines.push('- ' + w.icon + ' ' + w.name + ': ' + w.text));
+  }
   lines.push('');
   if (data.exLines.length){
     lines.push('EJERCICIOS:');
@@ -4353,15 +4411,10 @@ function dayReportPlainText(data, memoText){
     lines.push('EJERCICIOS: sin datos registrados este día.');
   }
   lines.push('');
-  lines.push('Series completadas: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : '') + (data.badSets ? ' · ' + data.badSets + ' a vigilar' : ''));
-  if (data.avgRating !== null) lines.push('Valoración media: ' + data.avgRating.toFixed(1) + '/5');
-  lines.push('Tonelaje del día: ' + data.tonnageKg + ' kg');
-  lines.push('RPE (esfuerzo percibido): ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar'));
-  lines.push('Sensación general: ' + (feelingLabel(data.feeling) || 'sin registrar'));
   lines.push('Notas del atleta: ' + (data.note || '(sin notas)'));
   if (memoText){
     lines.push('');
-    lines.push('RESUMEN:');
+    lines.push('LECTURA DEL ENTRENADOR:');
     lines.push(memoText);
   }
   return lines.join('\n');
@@ -4374,13 +4427,14 @@ function generateDayReport(plan, day){
   render();
 }
 
-function weekReportPlainText(plan, perDay, memoText){
+function weekReportPlainText(plan, perDay, memoText, status){
   const lines = [];
   lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Mi plan'));
   lines.push('Atleta: ' + getActiveUser().name);
+  if (status) lines.push('Estado: ' + status.icon + ' ' + status.label.toUpperCase());
   lines.push('');
   perDay.forEach(d=>{
-    lines.push(d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
+    lines.push(d.status.icon + ' ' + d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
       ' · ' + d.tonnageKg + 'kg' +
       (d.rpe!==null ? ' · RPE '+d.rpe : '') +
       (d.feeling ? ' · ' + feelingLabel(d.feeling) : '') +
@@ -4388,7 +4442,7 @@ function weekReportPlainText(plan, perDay, memoText){
   });
   if (memoText){
     lines.push('');
-    lines.push('RESUMEN DE LA SEMANA:');
+    lines.push('LECTURA DEL ENTRENADOR:');
     lines.push(memoText);
   }
   return lines.join('\n');
@@ -4396,8 +4450,9 @@ function weekReportPlainText(plan, perDay, memoText){
 
 function generateWeekReport(plan){
   const perDay = DAY_ORDER.filter(d=>plan.days[d] && plan.days[d].length).map(d=>dayReportData(plan, d));
+  const status = weekStatus(perDay);
   const summary = localWeekSummary(perDay);
-  state.weekReport = { planId: plan.id, perDay, memo: { loading:false, text: summary, error:null } };
+  state.weekReport = { planId: plan.id, perDay, status, memo: { loading:false, text: summary, error:null } };
   render();
 }
 
@@ -4444,27 +4499,69 @@ function reportActionsRow(subject, text){
 
 function reportDataBlock(data){
   const wrap = el('div');
-  wrap.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12.5px;line-height:1.7;color:var(--chalk);background:var(--surface-2);border-radius:10px;padding:12px 14px;';
-  const line = (label, value)=>{
-    const l = el('div');
-    l.innerHTML = '<span style="color:var(--muted-2);">'+label+'</span> ' + value;
-    return l;
+  wrap.style.cssText = 'background:var(--surface-2);border-radius:10px;padding:14px;';
+
+  const statusRow = el('div');
+  const isWatch = data.status.label === 'A vigilar';
+  statusRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:Oswald,sans-serif;font-weight:700;font-size:16px;margin-bottom:12px;letter-spacing:.02em;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
+  statusRow.innerHTML = '<span style="font-size:20px;">'+data.status.icon+'</span> ' + data.status.label.toUpperCase();
+  wrap.appendChild(statusRow);
+
+  const grid = el('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:12px;';
+  const metric = (label, value)=>{
+    const m = el('div');
+    m.innerHTML = '<div style="font-family:Inter,sans-serif;color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;">'+label+'</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;color:var(--chalk);font-weight:700;font-size:15px;margin-top:2px;">'+value+'</div>';
+    return m;
   };
-  if (data.exLines.length){
-    data.exLines.forEach(l=> wrap.appendChild(line('•', '<b>'+l.name+'</b>: '+l.setsStr)));
-    wrap.appendChild(document.createElement('hr')).style.cssText = 'border:none;border-top:1px solid var(--surface-3);margin:8px 0;';
-  } else {
-    wrap.appendChild(line('•', 'Sin ejercicios registrados este día.'));
-  }
-  wrap.appendChild(line('Series:', data.okSets+'/'+data.totalSets + (data.completion!==null?' ('+data.completion+'%)':'') + (data.badSets?' · '+data.badSets+' a vigilar':'')));
+  grid.appendChild(metric('Cumplimiento', data.okSets+'/'+data.totalSets+(data.completion!==null?' ('+data.completion+'%)':'')));
+  grid.appendChild(metric('Tonelaje', data.tonnageKg+' kg'));
   if (data.avgRating !== null){
     const info = ratingInfo(Math.round(data.avgRating));
-    wrap.appendChild(line('Valoración media:', (info?info.icon+' ':'') + data.avgRating.toFixed(1) + '/5'));
+    grid.appendChild(metric('Valoración media', (info?info.icon+' ':'') + data.avgRating.toFixed(1) + '/5'));
   }
-  wrap.appendChild(line('Tonelaje:', data.tonnageKg+' kg'));
-  wrap.appendChild(line('RPE:', data.rpe!==null ? data.rpe+'/10' : '—'));
-  wrap.appendChild(line('Sensación:', feelingLabel(data.feeling) || '—'));
-  wrap.appendChild(line('Nota:', data.note || '—'));
+  grid.appendChild(metric('RPE', data.rpe!==null ? data.rpe+'/10' : '—'));
+  grid.appendChild(metric('Sensación', feelingLabel(data.feeling) || '—'));
+  wrap.appendChild(grid);
+
+  if (data.watchList.length){
+    const watchBox = el('div');
+    watchBox.style.cssText = 'background:var(--surface);border:1.5px solid var(--red);border-radius:8px;padding:10px 12px;margin-bottom:12px;';
+    const wTitle = el('div', null, '⚠️ A VIGILAR');
+    wTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:12px;color:var(--red);margin-bottom:6px;letter-spacing:.02em;';
+    watchBox.appendChild(wTitle);
+    data.watchList.forEach(w=>{
+      const wl = el('div');
+      wl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--chalk);line-height:1.7;';
+      wl.textContent = w.icon + ' ' + w.name + ': ' + w.text;
+      watchBox.appendChild(wl);
+    });
+    wrap.appendChild(watchBox);
+  }
+
+  const exTitle = el('div', null, 'EJERCICIOS');
+  exTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:10.5px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:6px;';
+  wrap.appendChild(exTitle);
+  if (data.exLines.length){
+    data.exLines.forEach(l=>{
+      const exRow = el('div');
+      exRow.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:12px;line-height:1.7;color:var(--chalk);margin-bottom:2px;';
+      exRow.innerHTML = '<b>'+l.name+'</b>: '+l.setsStr;
+      wrap.appendChild(exRow);
+    });
+  } else {
+    const empty = el('div','ex-hint','Sin ejercicios registrados este día.');
+    wrap.appendChild(empty);
+  }
+
+  if (data.note){
+    const noteBox = el('div');
+    noteBox.style.cssText = 'margin-top:12px;padding-top:10px;border-top:1px solid var(--surface-3);font-family:Inter,sans-serif;font-size:12.5px;color:var(--muted);line-height:1.5;';
+    noteBox.innerHTML = '<span style="color:var(--muted-2);font-weight:600;">Nota del atleta: </span>' + data.note.replace(/\n/g,'<br>');
+    wrap.appendChild(noteBox);
+  }
+
   return wrap;
 }
 
@@ -4486,7 +4583,7 @@ function renderDayReportOverlay(){
     err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
     memoWrap.appendChild(err);
   } else if (r.memo.text){
-    memoWrap.appendChild(el('div','day-count','RESUMEN'));
+    memoWrap.appendChild(el('div','day-count','LECTURA DEL ENTRENADOR'));
     const txt = el('div', null, r.memo.text);
     txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
     memoWrap.appendChild(txt);
@@ -4511,10 +4608,17 @@ function renderWeekReportOverlay(plan){
   const r = state.weekReport;
   sheet.appendChild(el('h3','Informe de la semana'));
 
+  if (r.status){
+    const isWatch = r.status.label.indexOf('vigilar') !== -1;
+    const statusRow = el('div', null, r.status.icon + ' ' + r.status.label.toUpperCase());
+    statusRow.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:.02em;margin-bottom:14px;' + (isWatch ? 'color:var(--red);' : 'color:var(--chalk);');
+    sheet.appendChild(statusRow);
+  }
+
   r.perDay.forEach(d=>{
     const dCard = el('div');
     dCard.style.cssText = 'margin-bottom:10px;';
-    dCard.appendChild(el('div','day-count', d.dayName.toUpperCase()));
+    dCard.appendChild(el('div','day-count', d.status.icon + '  ' + d.dayName.toUpperCase()));
     dCard.appendChild(reportDataBlock(d));
     sheet.appendChild(dCard);
   });
@@ -4531,7 +4635,7 @@ function renderWeekReportOverlay(plan){
     err.style.cssText = 'color:var(--red);font-size:12.5px;line-height:1.5;';
     memoWrap.appendChild(err);
   } else if (r.memo.text){
-    memoWrap.appendChild(el('div','day-count','RESUMEN DE LA SEMANA'));
+    memoWrap.appendChild(el('div','day-count','LECTURA DEL ENTRENADOR'));
     const txt = el('div', null, r.memo.text);
     txt.style.cssText = 'font-size:13.5px;line-height:1.6;color:var(--chalk);white-space:pre-wrap;margin-top:6px;';
     memoWrap.appendChild(txt);
@@ -4539,7 +4643,7 @@ function renderWeekReportOverlay(plan){
   sheet.appendChild(memoWrap);
 
   const subject = 'Informe semanal' + (plan.meta && plan.meta.week!=null ? ' · Semana '+plan.meta.week : '') + ' — ' + getActiveUser().name;
-  sheet.appendChild(reportActionsRow(subject, weekReportPlainText(plan, r.perDay, r.memo.text)));
+  sheet.appendChild(reportActionsRow(subject, weekReportPlainText(plan, r.perDay, r.memo.text, r.status)));
 
   const closeBtn = el('button','sheet-close','Cerrar');
   closeBtn.onclick = close;
