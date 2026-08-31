@@ -2661,8 +2661,9 @@ function renderFlashcardOverlay(plan){
       const c = s.cluster;
       const restLabel = c.restSeconds!=null ? (c.restSeconds+'"') : (c.raw || '');
       const clusterLine = el('div');
-      clusterLine.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:26px;font-weight:700;color:var(--chalk);text-align:center;';
-      clusterLine.textContent = (restLabel ? 'Descanso '+restLabel+' → ' : '→ ') + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c);
+      clusterLine.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:32px;font-weight:700;color:var(--chalk);text-align:center;line-height:1.25;';
+      const clusterReps = c.restSeconds!=null ? (c.reps ?? repDisplayText(c)) : repDisplayText(c);
+      clusterLine.textContent = (restLabel ? 'Descanso '+restLabel+' → ' : '→ ') + kgDisplayText(c) + '×' + (c.series||'?') + '×' + clusterReps;
       card.appendChild(clusterLine);
     }
     if (entry.parts && entry.parts.length > 1){
