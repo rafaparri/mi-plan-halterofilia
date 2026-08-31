@@ -411,9 +411,9 @@ input[type=file]{display:none;}
 }
 .fc-mark-row{ display:flex; gap:7px; width:100%; margin-top:12px; }
 .fc-mark{
-  flex:1;padding:12px 0;border-radius:12px;
+  flex:1;padding:16px 0;border-radius:12px;
   border:2px solid var(--surface-3);background:var(--surface-2);
-  font-size:24px;line-height:1;
+  font-size:29px;line-height:1;
   cursor:pointer;transition:all .12s ease;
 }
 .fc-mark.selected{ transform:scale(1.06); }
@@ -429,12 +429,12 @@ input[type=file]{display:none;}
 }
 
 .fc-newweight-form{ display:flex; gap:12px; margin-top:20px; justify-content:center; }
-.fc-field{ display:flex; flex-direction:column; align-items:center; gap:6px; }
-.fc-field-label{ font-size:14px; color:var(--muted-2); text-transform:uppercase; letter-spacing:.03em; font-weight:600; }
+.fc-field{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+.fc-field-label{ font-size:16px; color:var(--muted-2); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
 .fc-field-input{
-  background:var(--surface-2);border:1.5px solid var(--surface-3);border-radius:10px;
-  color:var(--chalk);font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;
-  padding:12px 8px;text-align:center;
+  background:var(--surface-2);border:2px solid var(--surface-3);border-radius:12px;
+  color:var(--chalk);font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:700;
+  padding:16px 8px;text-align:center;
 }
 
 .fc-nav{
@@ -2506,9 +2506,9 @@ function renderFlashcardOverlay(plan){
         wrapF.appendChild(inp);
         return wrapF;
       };
-      form.appendChild(mkField('KG','kg',70, s.kg));
-      form.appendChild(mkField('Series','series',60, s.series));
-      form.appendChild(mkField('Repes','reps',60, repsVal, 'text'));
+      form.appendChild(mkField('KG','kg',90, s.kg));
+      form.appendChild(mkField('Series','series',78, s.series));
+      form.appendChild(mkField('Repes','reps',78, repsVal, 'text'));
       card.appendChild(form);
 
       const editActions = el('div','fc-final-actions');
@@ -2576,15 +2576,15 @@ function renderFlashcardOverlay(plan){
     card.appendChild(markRow);
 
     const secondaryRow = el('div');
-    secondaryRow.style.cssText = 'display:flex;gap:16px;margin-top:6px;';
+    secondaryRow.style.cssText = 'display:flex;gap:10px;width:100%;margin-top:10px;';
     const editSetBtn = el('button', null, '✏️ Editar');
-    editSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;';
+    editSetBtn.style.cssText = 'flex:1;background:var(--surface-2);border:2px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
     editSetBtn.onclick = ()=>{ state.flashcard.editingSet = true; render(); };
     secondaryRow.appendChild(editSetBtn);
 
     if (state.flashcard.confirmDeleteSetIdx !== cardIdx){
       const delSetBtn = el('button', null, '🗑 Borrar');
-      delSetBtn.style.cssText = 'background:none;border:none;color:var(--muted-2);font-family:Inter,sans-serif;font-size:12.5px;text-decoration:underline;cursor:pointer;';
+      delSetBtn.style.cssText = 'flex:1;background:var(--surface-2);border:2px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
       delSetBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = cardIdx; render(); };
       secondaryRow.appendChild(delSetBtn);
     }
@@ -2592,11 +2592,14 @@ function renderFlashcardOverlay(plan){
 
     if (state.flashcard.confirmDeleteSetIdx === cardIdx){
       const confirmRow = el('div');
-      confirmRow.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap;justify-content:center;';
-      const txt = el('span', null, '¿Borrar este peso?');
-      txt.style.cssText = 'font-size:12.5px;color:var(--muted);';
+      confirmRow.style.cssText = 'width:100%;margin-top:10px;';
+      const txt = el('div', null, '¿Borrar este peso?');
+      txt.style.cssText = 'font-family:Inter,sans-serif;font-weight:600;font-size:20px;color:var(--chalk);text-align:center;margin-bottom:10px;';
+      confirmRow.appendChild(txt);
+      const btnRow = el('div');
+      btnRow.style.cssText = 'display:flex;gap:10px;';
       const yesBtn = el('button', null, 'Sí, borrar');
-      yesBtn.style.cssText = 'background:var(--red);border:none;color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer;';
+      yesBtn.style.cssText = 'flex:1;background:var(--red);border:2px solid var(--red);color:#fff8f0;font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
       yesBtn.onclick = ()=>{
         deleteSetFromEntry(plan, day, exIdx, cardIdx);
         state.flashcard.confirmDeleteSetIdx = null;
@@ -2604,9 +2607,10 @@ function renderFlashcardOverlay(plan){
         render();
       };
       const noBtn = el('button', null, 'No');
-      noBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-size:12px;padding:8px 14px;border-radius:8px;cursor:pointer;';
+      noBtn.style.cssText = 'flex:1;background:var(--surface-2);border:2px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
       noBtn.onclick = ()=>{ state.flashcard.confirmDeleteSetIdx = null; render(); };
-      confirmRow.appendChild(txt); confirmRow.appendChild(yesBtn); confirmRow.appendChild(noBtn);
+      btnRow.appendChild(yesBtn); btnRow.appendChild(noBtn);
+      confirmRow.appendChild(btnRow);
       card.appendChild(confirmRow);
     }
 
@@ -2684,9 +2688,9 @@ function renderFlashcardOverlay(plan){
         wrapF.appendChild(inp);
         return wrapF;
       };
-      form.appendChild(mk('KG','kg',70));
-      form.appendChild(mk('Series','series',60));
-      form.appendChild(mk('Repes','reps',60));
+      form.appendChild(mk('KG','kg',90));
+      form.appendChild(mk('Series','series',78));
+      form.appendChild(mk('Repes','reps',78));
       card.appendChild(form);
 
       const confirmRow = el('div','fc-final-actions');
