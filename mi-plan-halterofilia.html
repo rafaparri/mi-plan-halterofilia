@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
@@ -1349,7 +1350,7 @@ function ratingInfo(value){ return SET_RATING_LEVELS.find(l=>l.value===value) ||
 
 function makeUserId(){ return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function makeUser(name){
-  return { id: makeUserId(), name: name, objetivos: { metas: { 1: null, 10: null } }, rms: {}, metrics: [] };
+  return { id: makeUserId(), name: name, objetivos: { metas: { 1: null, 10: null }, competitionDate: null }, rms: {}, metrics: [] };
 }
 
 async function loadUsersAsync(){
@@ -3328,6 +3329,28 @@ function renderProfileScreen(){
   objCard.style.cursor = 'default';
   objCard.appendChild(el('div','day-count','OBJETIVOS · ARRANCADA Y DOS TIEMPOS'));
 
+  const compRow = el('div'); compRow.style.cssText = 'margin-top:14px;';
+  const compLbl = el('div', null, 'Fecha de la próxima competición');
+  compLbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;';
+  compRow.appendChild(compLbl);
+  const compInput = document.createElement('input');
+  compInput.type = 'date';
+  compInput.value = u.objetivos.competitionDate || '';
+  compInput.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:15px;padding:10px;';
+  compInput.addEventListener('change', ()=>{
+    u.objetivos.competitionDate = compInput.value || null;
+    saveUsersAsync(users);
+    render();
+  });
+  compRow.appendChild(compInput);
+  if (u.objetivos.competitionDate){
+    const daysLeft = Math.ceil((new Date(u.objetivos.competitionDate+'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+    const compHint = el('div', null, daysLeft>=0 ? ('Faltan ' + daysLeft + (daysLeft===1?' día':' días')) : 'Fecha ya pasada');
+    compHint.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--muted);margin-top:6px;';
+    compRow.appendChild(compHint);
+  }
+  objCard.appendChild(compRow);
+
   [1,10].forEach(code=>{
     const row = el('div'); row.style.cssText = 'margin-top:14px;';
     const lbl = el('div', null, code + ' · ' + DICT[code]);
@@ -4336,6 +4359,42 @@ function dayWatchList(plan, day, entries){
   return list;
 }
 
+// Marcas importantes: para cada ejercicio del día, si el peso más alto de
+// hoy supera (o iguala, si no había ninguno antes) el peso más alto
+// registrado en cualquier otro entreno anterior con ese mismo código.
+function dayRecordsForExercises(plan, day, entries){
+  const records = [];
+  entries.forEach(e=>{
+    const numericKgs = e.sets.filter(s=>s.kg!==null && s.kg!==undefined).map(s=>s.kg);
+    if (!numericKgs.length) return;
+    const todayMax = Math.max(...numericKgs);
+    let priorMax = null;
+    state.plans.forEach(p=>{
+      DAY_ORDER.forEach(d=>{
+        if (p.id===plan.id && d===day) return; // se excluye el propio día del informe
+        const dEntries = p.days[d]; if (!dEntries) return;
+        dEntries.forEach(ex=>{
+          if (ex.type!=='exercise' || ex.code!==e.code) return;
+          ex.sets.forEach(s=>{
+            if (s.kg!==null && s.kg!==undefined && (priorMax===null || s.kg>priorMax)) priorMax = s.kg;
+          });
+        });
+      });
+    });
+    if (priorMax===null || todayMax > priorMax){
+      records.push({ name: e.name || ('Código '+e.code), kg: todayMax, priorMax });
+    }
+  });
+  return records;
+}
+
+function daysToCompetition(u){
+  const dateStr = u.objetivos && u.objetivos.competitionDate;
+  if (!dateStr) return null;
+  const days = Math.ceil((new Date(dateStr+'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+  return { days, dateStr };
+}
+
 function dayReportData(plan, day){
   const noteObj = dayCombinedNote(plan, day);
   const entries = (plan.days[day] || []).filter(e=>e.type==='exercise');
@@ -4349,6 +4408,7 @@ function dayReportData(plan, day){
     return { name: e.name || ('Código '+e.code), setsStr };
   });
   const watchList = dayWatchList(plan, day, entries);
+  const records = dayRecordsForExercises(plan, day, entries);
   const totalSets = entries.reduce((a,e)=>a+e.sets.length,0);
   const allRatings = [];
   entries.forEach((e,exIdx)=>e.sets.forEach((s,si)=>{
@@ -4358,11 +4418,13 @@ function dayReportData(plan, day){
   const okSets = allRatings.length; // series marcadas (con cualquier valoración), no solo las de nota alta
   const badSets = watchList.length; // a vigilar: valoradas mal o muy mal
   const avgRating = allRatings.length ? allRatings.reduce((a,b)=>a+b,0)/allRatings.length : null;
+  const u = getActiveUser();
   const data = {
     dayName: DAY_NAMES[day],
     week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
-    athlete: getActiveUser().name,
-    exLines, watchList, totalSets, okSets, badSets, avgRating,
+    athlete: u.name,
+    competition: daysToCompetition(u),
+    exLines, watchList, records, totalSets, okSets, badSets, avgRating,
     completion: totalSets ? Math.round(100*okSets/totalSets) : null,
     tonnageKg: Math.round(tonnage(plan.days[day])),
     rpe: noteObj.rpe, feeling: noteObj.feeling, note: noteObj.text
@@ -4423,6 +4485,9 @@ function dayReportPlainText(data, memoText){
   const lines = [];
   lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.week!==null ? ' · Semana '+data.week : ''));
   lines.push('Atleta: ' + data.athlete);
+  if (data.competition){
+    lines.push(data.competition.days>=0 ? ('Próxima competición: ' + data.competition.days + ' días (' + data.competition.dateStr + ')') : 'Próxima competición: fecha ya pasada');
+  }
   lines.push('Estado: ' + data.status.icon + ' ' + data.status.label.toUpperCase());
   lines.push('');
   lines.push('Cumplimiento: ' + data.okSets + '/' + data.totalSets + (data.completion!==null ? ' (' + data.completion + '%)' : ''));
@@ -4430,6 +4495,11 @@ function dayReportPlainText(data, memoText){
   lines.push('Tonelaje: ' + data.tonnageKg + ' kg');
   lines.push('RPE (esfuerzo percibido): ' + (data.rpe!==null ? data.rpe+'/10' : 'sin registrar'));
   lines.push('Sensación general: ' + (feelingLabel(data.feeling) || 'sin registrar'));
+  if (data.records.length){
+    lines.push('');
+    lines.push('MARCAS IMPORTANTES:');
+    data.records.forEach(r=> lines.push('- 🏆 ' + r.name + ': ' + r.kg + 'kg' + (r.priorMax!==null ? ' (anterior: '+r.priorMax+'kg)' : ' (primera vez registrado)')));
+  }
   if (data.watchList.length){
     lines.push('');
     lines.push('A VIGILAR:');
@@ -4516,16 +4586,184 @@ async function shareReportText(subject, text){
   window.open('mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text), '_blank');
 }
 
-function reportActionsRow(subject, text){
+/* ---- PDF del informe diario, maquetado ---- */
+function generateDayReportPDF(data, memoText){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 18;
+  const contentW = pageW - marginX*2;
+  let y = 46;
+
+  function checkPageBreak(need){
+    if (y + need > pageH - 16){
+      doc.addPage();
+      y = 20;
+    }
+  }
+  function sectionTitle(text, color){
+    checkPageBreak(10);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.setTextColor.apply(doc, color || [40,40,40]);
+    doc.text(text, marginX, y);
+    y += 6;
+  }
+
+  // Cabecera
+  doc.setFillColor(32,36,46);
+  doc.rect(0,0,pageW,36,'F');
+  doc.setTextColor(201,154,46);
+  doc.setFont('helvetica','bold'); doc.setFontSize(17);
+  doc.text('INFORME DE ENTRENO', marginX, 15);
+  doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  doc.setTextColor(225,225,225);
+  doc.text(data.dayName + (data.week!==null ? '  ·  Semana '+data.week : ''), marginX, 23);
+  doc.text('Atleta: ' + data.athlete, marginX, 30);
+
+  const isWatch = data.status.label === 'A vigilar';
+  const statusColor = isWatch ? [193,74,58] : [201,154,46];
+  const statusText = data.status.label.toUpperCase();
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  const stW = doc.getTextWidth(statusText) + 10;
+  doc.setFillColor.apply(doc, statusColor);
+  doc.roundedRect(pageW-marginX-stW, 9, stW, 8, 2, 2, 'F');
+  doc.setTextColor(255,255,255);
+  doc.text(statusText, pageW-marginX-stW+5, 14.5);
+
+  y = 46;
+
+  if (data.competition){
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(120,120,120);
+    const compTxt = data.competition.days>=0
+      ? ('PRÓXIMA COMPETICIÓN: faltan ' + data.competition.days + ' días (' + data.competition.dateStr + ')')
+      : 'PRÓXIMA COMPETICIÓN: fecha ya pasada';
+    doc.text(compTxt, marginX, y);
+    y += 9;
+  }
+
+  // Métricas
+  function metricBlock(x, label, value){
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(140,140,140);
+    doc.text(label.toUpperCase(), x, y);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(30,30,30);
+    doc.text(String(value), x, y+6);
+  }
+  const colW = contentW/3;
+  metricBlock(marginX, 'Cumplimiento', data.okSets+'/'+data.totalSets+(data.completion!==null?' ('+data.completion+'%)':''));
+  metricBlock(marginX+colW, 'Tonelaje', data.tonnageKg+' kg');
+  metricBlock(marginX+colW*2, 'RPE', data.rpe!==null?data.rpe+'/10':'—');
+  y += 13;
+  metricBlock(marginX, 'Valoración media', data.avgRating!==null ? data.avgRating.toFixed(1)+'/5' : '—');
+  metricBlock(marginX+colW, 'Sensación', feelingLabel(data.feeling) || '—');
+  y += 14;
+
+  doc.setDrawColor(220,220,220);
+  doc.line(marginX, y, pageW-marginX, y);
+  y += 9;
+
+  if (data.records.length){
+    const boxH = 9 + data.records.length*6;
+    checkPageBreak(boxH+4);
+    doc.setFillColor(252,244,222);
+    doc.setDrawColor(201,154,46);
+    doc.roundedRect(marginX, y-5, contentW, boxH, 2, 2, 'FD');
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(153,110,20);
+    doc.text('MARCA IMPORTANTE', marginX+4, y+1);
+    y += 7;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(70,55,15);
+    data.records.forEach(r=>{
+      doc.text('• ' + r.name + ': ' + r.kg + 'kg' + (r.priorMax!==null ? ' (antes '+r.priorMax+'kg)' : ' (primer registro)'), marginX+4, y);
+      y += 6;
+    });
+    y += 7;
+  }
+
+  if (data.watchList.length){
+    const boxH = 9 + data.watchList.length*6;
+    checkPageBreak(boxH+4);
+    doc.setFillColor(252,235,232);
+    doc.setDrawColor(193,74,58);
+    doc.roundedRect(marginX, y-5, contentW, boxH, 2, 2, 'FD');
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(150,50,38);
+    doc.text('A VIGILAR', marginX+4, y+1);
+    y += 7;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(80,30,25);
+    data.watchList.forEach(w=>{
+      const line = '• ' + w.name + ': ' + w.text;
+      doc.text(line, marginX+4, y);
+      y += 6;
+    });
+    y += 7;
+  }
+
+  sectionTitle('EJERCICIOS', [90,90,90]);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+  if (data.exLines.length){
+    data.exLines.forEach(l=>{
+      checkPageBreak(12);
+      doc.setFont('helvetica','bold');
+      doc.text(l.name, marginX, y);
+      y += 5.5;
+      doc.setFont('helvetica','normal');
+      const wrapped = doc.splitTextToSize(l.setsStr.replace(/[😫😞😐🙂💪]/g,''), contentW-4);
+      wrapped.forEach(line=>{
+        checkPageBreak(6);
+        doc.text(line, marginX+4, y);
+        y += 5.5;
+      });
+      y += 2;
+    });
+  } else {
+    doc.text('Sin ejercicios registrados este día.', marginX, y);
+    y += 6;
+  }
+  y += 4;
+
+  if (data.note){
+    checkPageBreak(14);
+    sectionTitle('NOTA DEL ATLETA', [90,90,90]);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+    const noteLines = doc.splitTextToSize(data.note, contentW);
+    noteLines.forEach(line=>{ checkPageBreak(6); doc.text(line, marginX, y); y += 5.5; });
+    y += 5;
+  }
+
+  if (memoText){
+    checkPageBreak(14);
+    sectionTitle('LECTURA DEL ENTRENADOR', [201,154,46]);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+    const memoLines = doc.splitTextToSize(memoText, contentW);
+    memoLines.forEach(line=>{ checkPageBreak(6); doc.text(line, marginX, y); y += 5.5; });
+  }
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(160,160,160);
+    doc.text('Generado el ' + new Date().toLocaleDateString('es-ES'), marginX, pageH-10);
+  }
+
+  const fileDay = data.dayName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  doc.save('informe-' + fileDay + (data.week!==null?'-semana'+data.week:'') + '.pdf');
+}
+
+function reportActionsRow(subject, text, pdfFn){
   const row = el('div');
-  row.style.cssText = 'display:flex;gap:8px;margin-top:16px;';
+  row.style.cssText = 'display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;';
   const copyBtn = el('button','mark-btn ok selected','📋 Copiar texto');
-  copyBtn.style.flex = '1';
+  copyBtn.style.flex = '1 1 auto';
   copyBtn.onclick = ()=> copyReportText(text, copyBtn);
   const shareBtn = el('button','mark-btn','📤 Enviar / Compartir');
-  shareBtn.style.flex = '1';
+  shareBtn.style.flex = '1 1 auto';
   shareBtn.onclick = ()=> shareReportText(subject, text);
   row.appendChild(copyBtn); row.appendChild(shareBtn);
+  if (pdfFn){
+    const pdfBtn = el('button','mark-btn','📄 Descargar PDF');
+    pdfBtn.style.flex = '1 1 100%';
+    pdfBtn.onclick = pdfFn;
+    row.appendChild(pdfBtn);
+  }
   return row;
 }
 
@@ -4556,6 +4794,21 @@ function reportDataBlock(data){
   grid.appendChild(metric('RPE', data.rpe!==null ? data.rpe+'/10' : '—'));
   grid.appendChild(metric('Sensación', feelingLabel(data.feeling) || '—'));
   wrap.appendChild(grid);
+
+  if (data.records.length){
+    const recBox = el('div');
+    recBox.style.cssText = 'background:var(--surface);border:2px solid var(--yellow-deep);border-radius:10px;padding:12px 14px;margin-bottom:16px;';
+    const rTitle = el('div', null, '🏆 MARCA IMPORTANTE');
+    rTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--yellow-deep);margin-bottom:8px;letter-spacing:.02em;';
+    recBox.appendChild(rTitle);
+    data.records.forEach(r=>{
+      const rl = el('div');
+      rl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;color:var(--chalk);line-height:1.7;';
+      rl.textContent = r.name + ': ' + r.kg + 'kg' + (r.priorMax!==null ? ' (antes: ' + r.priorMax + 'kg)' : ' (primer registro)');
+      recBox.appendChild(rl);
+    });
+    wrap.appendChild(recBox);
+  }
 
   if (data.watchList.length){
     const watchBox = el('div');
@@ -4626,7 +4879,7 @@ function renderDayReportOverlay(){
   sheet.appendChild(memoWrap);
 
   const subject = 'Entreno ' + DAY_NAMES[r.day] + (r.data.week!==null?' · Semana '+r.data.week:'') + ' — ' + r.data.athlete;
-  sheet.appendChild(reportActionsRow(subject, dayReportPlainText(r.data, r.memo.text)));
+  sheet.appendChild(reportActionsRow(subject, dayReportPlainText(r.data, r.memo.text), ()=> generateDayReportPDF(r.data, r.memo.text)));
 
   const closeBtn = el('button','sheet-close','Cerrar');
   closeBtn.onclick = close;
