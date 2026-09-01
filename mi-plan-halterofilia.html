@@ -188,16 +188,23 @@ input[type=file]{display:none;}
   font-family:inherit;
 }
 .plate{
-  border-radius:50%;
+  border-radius:16px;
   display:flex;align-items:center;justify-content:center;
   font-family:'Oswald',sans-serif;
   font-weight:700;
   position:relative;
-  transition:transform .15s ease;
+  transition:transform .1s ease;
 }
-.plate-wrap:active .plate{transform:scale(0.94);}
+.plate-wrap:active .plate{transform:translateY(3px) scale(0.95);}
 .plate-wrap.active .plate{
-  box-shadow:0 0 0 3px var(--bg), 0 0 0 5px var(--chalk);
+  outline:3px solid var(--chalk);
+  outline-offset:2px;
+}
+.plate-empty{
+  background:var(--surface-2) !important;
+  border:2px dashed var(--surface-3);
+  color:var(--muted-2) !important;
+  box-shadow:none !important;
 }
 .plate-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
 .plate-wrap.active .plate-label{color:var(--chalk);font-weight:700;}
@@ -1643,6 +1650,7 @@ let state = {
   rmForm: null,            // { code, value, date } while the "+ Registrar RM" mini form is open
   metricForm: null,        // { date, peso, sistolica, diastolica } while the "+ Registrar medida" mini form is open
   showDayNote: false,
+  manualEditDay: null,
   dayNoteDrafts: null,
   confirmDeleteExercise: null,
   showMenu: false,
@@ -1892,6 +1900,25 @@ function reviewMiniInput(value, placeholder, width, onCommit){
   inp.style.cssText = 'width:'+width+'px;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:7px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:13px;padding:7px 6px;text-align:center;';
   inp.addEventListener('change', ()=> onCommit(inp.value.trim()));
   return inp;
+}
+
+// Edición manual de un día ya existente en el plan (o de uno vacío): reusa
+// las mismas tarjetas editables de la pantalla de revisión, apuntando
+// state.reviewDraft[day] al MISMO array que plan.days[day] (por referencia),
+// para que añadir/borrar/editar ahí actualice directamente el plan real.
+function startManualDayEdit(plan, day){
+  if (!plan.days[day]) plan.days[day] = [];
+  state.reviewDraft = {};
+  state.reviewDraft[day] = plan.days[day];
+  state.reviewDraftFor = plan.id + '__manual__' + day;
+  state.manualEditDay = day;
+  render();
+}
+function finishManualDayEdit(){
+  persistUserData();
+  state.reviewDraft = null; state.reviewDraftFor = null;
+  state.manualEditDay = null;
+  render();
 }
 
 function renderReviewEntry(plan, day, entry, idx){
@@ -2268,34 +2295,33 @@ function renderApp(plan){
   const tonnages = DAY_ORDER.filter(d=>plan.days[d]).map(d=>tonnage(plan.days[d]));
   const maxT = Math.max(1, ...tonnages);
   const minSize = 44, maxSize = 74;
+  const reliefShadow = '0 3px 0 rgba(0,0,0,.28), 0 4px 8px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.25)';
 
   DAY_ORDER.forEach(d=>{
-    if (!plan.days[d]) return;
-    const entries = plan.days[d];
-    const isRestOnly = entries.length && entries.every(e=>e.type==='rest');
-    const t = tonnage(entries);
-    const size = isRestOnly ? 44 : Math.round(minSize + (maxSize-minSize) * (t/maxT));
+    const hasPlan = !!plan.days[d];
+    const entries = plan.days[d] || [];
+    const isRestOnly = hasPlan && entries.length>0 && entries.every(e=>e.type==='rest');
+    const t = hasPlan ? tonnage(entries) : 0;
+    const size = (!hasPlan || isRestOnly) ? 44 : Math.round(minSize + (maxSize-minSize) * (t/maxT));
 
     const btn = el('button','plate-wrap' + (state.activeDay===d ? ' active':''));
-    const plate = el('div','plate');
+    const plate = el('div','plate' + (!hasPlan ? ' plate-empty' : ''));
     plate.style.width = size+'px';
     plate.style.height = size+'px';
     plate.style.fontSize = (size>60? 17:14)+'px';
 
-    let color = '#3a3c46';
-    if (isRestOnly) color = 'var(--rest)';
-    else if (entries.some(e=>e.type==='note')) color = 'var(--red)';
-    else color = ['var(--blue)','var(--yellow)','var(--purple)','var(--red)'][d.length % 4] ;
-    // stable color by day letter for consistency
-    const palette = { L:'var(--red)', M:'var(--rest)', X:'var(--blue)', J:'var(--yellow)', V:'var(--rest)', S:'var(--purple)' };
-    plate.style.background = isRestOnly ? 'var(--rest)' : (palette[d] || 'var(--blue)');
-    plate.style.color = (d==='J') ? '#26210a' : '#f4f1ea';
-    plate.textContent = d;
+    if (hasPlan){
+      const palette = { L:'var(--red)', M:'var(--rest)', X:'var(--blue)', J:'var(--yellow)', V:'var(--rest)', S:'var(--purple)' };
+      plate.style.background = isRestOnly ? 'var(--rest)' : (palette[d] || 'var(--blue)');
+      plate.style.color = (d==='J') ? '#26210a' : '#f4f1ea';
+      plate.textContent = d;
 
-    // progress ring based on checked SETS (not just exercises)
-    const { totalSets, checkedSets } = dayStats(plan, d);
-    if (totalSets>0 && checkedSets>0){
-      plate.style.boxShadow = `inset 0 0 0 3px rgba(244,241,234,${0.15+0.55*(checkedSets/totalSets)})`;
+      const { totalSets, checkedSets } = dayStats(plan, d);
+      plate.style.boxShadow = (totalSets>0 && checkedSets>0)
+        ? reliefShadow + `, inset 0 0 0 3px rgba(244,241,234,${0.15+0.55*(checkedSets/totalSets)})`
+        : reliefShadow;
+    } else {
+      plate.textContent = '+';
     }
 
     btn.appendChild(plate);
@@ -2326,23 +2352,62 @@ function renderApp(plan){
   dayReportBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
   dayReportBtn.onclick = ()=>{ generateDayReport(plan, state.activeDay); };
   heading.appendChild(dayReportBtn);
+  if (state.manualEditDay !== state.activeDay){
+    const manualEditBtn = el('button', null, '✏️ Editar a mano');
+    manualEditBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);font-family:Inter,sans-serif;font-weight:600;font-size:11.5px;padding:6px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;align-self:flex-start;';
+    manualEditBtn.onclick = ()=>{ startManualDayEdit(plan, state.activeDay); };
+    heading.appendChild(manualEditBtn);
+  }
   section.appendChild(heading);
 
-  if (entries.length === 0){
-    section.appendChild(el('div','empty-day','Sin datos para este día.'));
-  }
+  if (state.manualEditDay === state.activeDay){
+    const draftEntries = plan.days[state.activeDay] || [];
+    draftEntries.forEach((entry, idx)=>{
+      section.appendChild(renderReviewEntry(plan, state.activeDay, entry, idx));
+    });
+    const addRow = el('div');
+    addRow.style.cssText = 'display:flex;gap:8px;margin:6px 0 16px;flex-wrap:wrap;';
+    const addExBtn = el('button','tb-btn','+ Ejercicio');
+    addExBtn.onclick = ()=>{
+      draftEntries.push({ type:'exercise', code:null, name:null, sets:[{kg:null,series:null,reps:null}] });
+      render();
+    };
+    const addNoteBtn = el('button','tb-btn','+ Nota / descanso');
+    addNoteBtn.onclick = ()=>{
+      draftEntries.push({ type:'note', label:'' });
+      render();
+    };
+    addRow.appendChild(addExBtn); addRow.appendChild(addNoteBtn);
+    section.appendChild(addRow);
 
-  entries.forEach((entry, idx)=>{
-    if (entry.type === 'rest'){
-      section.appendChild(el('div','note-card', 'Descanso'));
-      return;
+    const saveManualBtn = el('button','mark-btn ok selected','Guardar cambios');
+    saveManualBtn.style.cssText += 'width:100%;margin-bottom:20px;';
+    saveManualBtn.onclick = ()=> finishManualDayEdit();
+    section.appendChild(saveManualBtn);
+  } else {
+    if (entries.length === 0){
+      const emptyWrap = el('div');
+      emptyWrap.style.cssText = 'text-align:center;padding:24px 0;';
+      emptyWrap.appendChild(el('div','empty-day','No hay entreno programado este día.'));
+      const addManualBtn = el('button','mark-btn ok selected','+ Añadir entreno a mano');
+      addManualBtn.style.cssText += 'margin-top:14px;display:inline-block;width:auto;padding-left:24px;padding-right:24px;';
+      addManualBtn.onclick = ()=> startManualDayEdit(plan, state.activeDay);
+      emptyWrap.appendChild(addManualBtn);
+      section.appendChild(emptyWrap);
     }
-    if (entry.type === 'note'){
-      section.appendChild(el('div','note-card competition', entry.label));
-      return;
-    }
-    section.appendChild(renderExerciseCard(plan, state.activeDay, entry, idx));
-  });
+
+    entries.forEach((entry, idx)=>{
+      if (entry.type === 'rest'){
+        section.appendChild(el('div','note-card', 'Descanso'));
+        return;
+      }
+      if (entry.type === 'note'){
+        section.appendChild(el('div','note-card competition', entry.label));
+        return;
+      }
+      section.appendChild(renderExerciseCard(plan, state.activeDay, entry, idx));
+    });
+  }
 
   wrap.appendChild(section);
 
