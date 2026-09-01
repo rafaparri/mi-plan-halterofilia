@@ -1351,7 +1351,7 @@ function ratingInfo(value){ return SET_RATING_LEVELS.find(l=>l.value===value) ||
 
 function makeUserId(){ return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function makeUser(name){
-  return { id: makeUserId(), name: name, objetivos: { metas: { 1: null, 10: null }, competitionDate: null }, rms: {}, metrics: [] };
+  return { id: makeUserId(), name: name, objetivos: { metas: { 1: null, 10: null }, competitionDate: null, competitionName: null }, rms: {}, metrics: [] };
 }
 
 async function loadUsersAsync(){
@@ -3330,6 +3330,23 @@ function renderProfileScreen(){
   objCard.style.cursor = 'default';
   objCard.appendChild(el('div','day-count','OBJETIVOS · ARRANCADA Y DOS TIEMPOS'));
 
+  const compNameRow = el('div'); compNameRow.style.cssText = 'margin-top:14px;';
+  const compNameLbl = el('div', null, 'Nombre de la competición');
+  compNameLbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;';
+  compNameRow.appendChild(compNameLbl);
+  const compNameInput = document.createElement('input');
+  compNameInput.type = 'text';
+  compNameInput.placeholder = 'Ej. Campeonato de España M50';
+  compNameInput.value = u.objetivos.competitionName || '';
+  compNameInput.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:15px;padding:10px;';
+  compNameInput.addEventListener('change', ()=>{
+    u.objetivos.competitionName = compNameInput.value.trim() || null;
+    saveUsersAsync(users);
+    render();
+  });
+  compNameRow.appendChild(compNameInput);
+  objCard.appendChild(compNameRow);
+
   const compRow = el('div'); compRow.style.cssText = 'margin-top:14px;';
   const compLbl = el('div', null, 'Fecha de la próxima competición');
   compLbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.02em;margin-bottom:6px;';
@@ -4393,7 +4410,7 @@ function daysToCompetition(u){
   const dateStr = u.objetivos && u.objetivos.competitionDate;
   if (!dateStr) return null;
   const days = Math.ceil((new Date(dateStr+'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
-  return { days, dateStr };
+  return { days, dateStr, name: (u.objetivos && u.objetivos.competitionName) || null };
 }
 
 function dayReportData(plan, day){
@@ -4487,7 +4504,8 @@ function dayReportPlainText(data, memoText){
   lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.week!==null ? ' · Semana '+data.week : ''));
   lines.push('Atleta: ' + data.athlete);
   if (data.competition){
-    lines.push(data.competition.days>=0 ? ('Próxima competición: ' + data.competition.days + ' días (' + data.competition.dateStr + ')') : 'Próxima competición: fecha ya pasada');
+    const compName = data.competition.name ? (data.competition.name + ' — ') : '';
+    lines.push(data.competition.days>=0 ? ('Próxima competición: ' + compName + 'faltan ' + data.competition.days + ' días (' + data.competition.dateStr + ')') : ('Próxima competición: ' + compName + 'fecha ya pasada'));
   }
   lines.push('Estado: ' + data.status.icon + ' ' + data.status.label.toUpperCase());
   lines.push('');
@@ -4653,9 +4671,10 @@ function generateDayReportPDF(data, memoText){
 
   if (data.competition){
     doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(120,120,120);
+    const compName = data.competition.name ? (stripEmojiForPDF(data.competition.name) + ' — ') : '';
     const compTxt = data.competition.days>=0
-      ? ('PRÓXIMA COMPETICIÓN: faltan ' + data.competition.days + ' días (' + data.competition.dateStr + ')')
-      : 'PRÓXIMA COMPETICIÓN: fecha ya pasada';
+      ? ('PRÓXIMA COMPETICIÓN: ' + compName + 'faltan ' + data.competition.days + ' días (' + data.competition.dateStr + ')')
+      : ('PRÓXIMA COMPETICIÓN: ' + compName + 'fecha ya pasada');
     doc.text(compTxt, marginX, y);
     y += 9;
   }
