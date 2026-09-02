@@ -2455,7 +2455,7 @@ function renderExerciseCard(plan, day, entry, idx){
     const rating = normalizeCheck(state.checks[checkKey(plan,day,idx,si)]);
     const rinfo = ratingInfo(rating);
     const chip = el('div','chip');
-    if (rinfo){ chip.style.cssText = 'background:'+rinfo.color+';border-color:'+rinfo.color+';color:#fff;'; }
+    if (rinfo){ chip.style.cssText = 'border-left:5px solid '+rinfo.color+';'; }
     let clusterHtml = '';
     if (s.cluster){
       const c = s.cluster;
@@ -2463,7 +2463,6 @@ function renderExerciseCard(plan, day, entry, idx){
       clusterHtml = ' <span style="opacity:.85;">' + (restLabel?'-'+restLabel+'-':'-') + ' ' + kgDisplayText(c) + '×' + (c.series||'?') + '×' + repDisplayText(c) + '</span>';
     }
     chip.innerHTML = '<b>'+kgDisplayText(s)+'</b> · ' + (s.series||'?') + '×' + repDisplayText(s) + clusterHtml + (rinfo ? ' ' + rinfo.icon : '') + (s.optional ? ' 🔓' : '') + (s.edited ? ' ✏️' : '');
-    if (rinfo) chip.querySelector('b').style.color = '#fff';
     chip.onclick = (e)=>{ e.stopPropagation(); openFlashcards(day, idx, si); };
     chips.appendChild(chip);
   });
