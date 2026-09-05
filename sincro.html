@@ -248,6 +248,7 @@
       </div>
       <div class="field"><label for="fGroup">Carpeta</label><select id="fGroup" class="input"></select></div>
       <div class="field"><label for="fDate">Fecha</label><input id="fDate" class="input" type="date"></div>
+      <div class="field"><label for="fAccMonth">Mes que se contabiliza</label><input id="fAccMonth" class="input" type="month"><div class="help">Normalmente coincide con la fecha. Cámbialo solo si, por ejemplo, pagas en septiembre una deuda de agosto.</div></div>
       <div class="field"><label for="fNote">Nota</label><textarea id="fNote" class="input" placeholder="Opcional"></textarea></div>
       <div class="field" id="fPhotoWrap">
         <label>Foto del ticket</label>
@@ -350,11 +351,11 @@ const CAT_BG=['#fce7f3','#dcfce7','#dbeafe','#fef3c7','#ede9fe','#ffe4e6','#cffa
 function catBg(id){ const i=state.categories.findIndex(c=>c.id===id); return CAT_BG[(i<0?7:i)%CAT_BG.length]; }
 const AVATARS=['🦊','🐼','🦁','🐯','🐸','🐙','🦉','🐺','🦄','🐲','🐧','🐨','🐻','🦝','🐬','🦩','🐝','🦖','🐢','🦜','🐹','🦔','🐳','🦋'];
 
-function freshState(){ return { projectName:'Sincro', members:[], categories:JSON.parse(JSON.stringify(DEFAULT_CATS)), expenses:[], groups:[], settings:{monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null}, updatedAt:0 }; }
+function freshState(){ return { projectName:'Sincro', members:[], categories:JSON.parse(JSON.stringify(DEFAULT_CATS)), expenses:[], groups:[], closedMonths:{}, settings:{monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null}, updatedAt:0 }; }
 function newMember(name,i){ return {id:'m'+uid(),name,color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null}; }
 
-let state=freshState(), me=null, syncCode=localStorage.getItem(LS_CODE)||'', view='inicio', anaYm=ym(new Date()), form=null, charts={}, currentGroupId=null;
-const groupKey=()=>'encomun_group_'+(syncCode||'local');
+let state=freshState(), me=null, syncCode=localStorage.getItem(LS_CODE)||'', view='inicio', anaYm=ym(new Date()), form=null, charts={}, currentScope=null, accMonthTouched=false;
+const scopeKey=()=>'encomun_scope_'+(syncCode||'local');
 const photoCache={};
 
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
@@ -379,15 +380,34 @@ function groupChildren(id){ return state.groups.filter(g=>g.parentId===id); }
 function groupDepth(id){ let d=0,g=groupById(id); while(g&&g.parentId){d++; g=groupById(g.parentId);} return d; }
 function groupDescendantIds(id){ const out=[id]; groupChildren(id).forEach(c=>out.push(...groupDescendantIds(c.id))); return out; }
 function groupLabel(id){ if(!id) return 'Todo el proyecto'; const g=groupById(id); return g?(g.name+(g.closed?' 🔒':'')):'Todo el proyecto'; }
-function setCurrentGroup(id){ currentGroupId=id||null; if(currentGroupId) localStorage.setItem(groupKey(),currentGroupId); else localStorage.removeItem(groupKey()); render(); }
-function scopedExpenses(){ if(!currentGroupId) return state.expenses; const ids=groupDescendantIds(currentGroupId); return state.expenses.filter(e=>e.groupId&&ids.includes(e.groupId)); }
+function setCurrentScope(scope){ currentScope=scope||null; localStorage.setItem(scopeKey(), scope===null?'':scope); render(); }
+function accountMonthOf(e){ return e.accountMonth||ym(e.date); }
+function isMonthClosed(mm){ return !!(state.closedMonths&&state.closedMonths[mm]); }
+function availableMonths(){ const set=new Set(state.expenses.map(accountMonthOf)); set.add(ym(new Date())); if(state.closedMonths) Object.keys(state.closedMonths).forEach(m=>set.add(m)); return [...set].sort().reverse(); }
+function scopeLabel(scope){ if(!scope) return 'Todo el proyecto'; if(scope.startsWith('m:')){ const mm=scope.slice(2); const t=ymLabel(mm).replace(/^\w/,c=>c.toUpperCase()); return t+(isMonthClosed(mm)?' 🔒':''); } if(scope.startsWith('g:')){ const g=groupById(scope.slice(2)); return g?(g.name+(g.closed?' 🔒':'')):'Todo el proyecto'; } return 'Todo el proyecto'; }
+function scopedExpenses(){
+  if(!currentScope) return state.expenses;
+  if(currentScope.startsWith('m:')){ const mm=currentScope.slice(2); return state.expenses.filter(e=>accountMonthOf(e)===mm); }
+  if(currentScope.startsWith('g:')){ const gid=currentScope.slice(2); const ids=groupDescendantIds(gid); return state.expenses.filter(e=>e.groupId&&ids.includes(e.groupId)); }
+  return state.expenses;
+}
+function closeMonthFlow(mm,after){
+  const list=state.expenses.filter(e=>accountMonthOf(e)===mm);
+  const b=computeBalancesFor(list); const st=settlements(b);
+  const label=ymLabel(mm).replace(/^\w/,c=>c.toUpperCase());
+  const msg = st.length ? (`Antes de cerrar ${label}, esto queda pendiente:\n\n`+st.map(d=>`${mname(d.from)} debe ${fmt(d.amount)} a ${mname(d.to)}`).join('\n')+'\n\n¿Cerrar igualmente? Podrás reabrirlo cuando quieras.') : `¿Cerrar ${label}? No se podrán añadir más gastos con ese mes contable hasta que lo reabras.`;
+  if(!confirm(msg)) return;
+  state.closedMonths=state.closedMonths||{}; state.closedMonths[mm]={closedAt:Date.now(),snapshot:{balances:b,settlements:st}};
+  commit(); if(after) after();
+}
+function reopenMonth(mm,after){ if(state.closedMonths) delete state.closedMonths[mm]; commit(); if(after) after(); }
 function groupOptionsHtml(selected){ let html=`<option value="">General (sin carpeta)</option>`; state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=`<option value="${g.id}" ${selected===g.id?'selected':''}>${esc(g.name)}${g.closed?' 🔒':''}</option>`; groupChildren(g.id).forEach(c=>{ html+=`<option value="${c.id}" ${selected===c.id?'selected':''}>\u00A0\u00A0↳ ${esc(c.name)}${c.closed?' 🔒':''}</option>`; }); }); return html; }
 function computeBalancesFor(list){ const b={}; state.members.forEach(m=>b[m.id]=0); for(const e of list){ if(e.type==='transfer'){ b[e.payerId]=(b[e.payerId]||0)+e.amount; b[e.toId]=(b[e.toId]||0)-e.amount; } else { b[e.payerId]=(b[e.payerId]||0)+e.amount; for(const m of state.members) b[m.id]-=shareOf(e,m.id); } } return b; }
 function slug(t){ return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 function genCode(name){ return (slug(name)||'x')+'-'+Math.random().toString(36).slice(2,6); }
 
-function loadLocal(){ state=freshState(); try{ const s=JSON.parse(localStorage.getItem(stateKey())); if(s&&s.members) state=migrate(s); }catch(e){} me=localStorage.getItem(meKey())||null; if(!state.members.find(m=>m.id===me)) me=state.members[0]?state.members[0].id:null; currentGroupId=localStorage.getItem(groupKey())||null; if(currentGroupId&&!groupById(currentGroupId)) currentGroupId=null; }
-function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=(s.expenses||[]).map(e=>Object.assign({groupId:null},e)); s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.groups=s.groups||[]; s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
+function loadLocal(){ state=freshState(); try{ const s=JSON.parse(localStorage.getItem(stateKey())); if(s&&s.members) state=migrate(s); }catch(e){} me=localStorage.getItem(meKey())||null; if(!state.members.find(m=>m.id===me)) me=state.members[0]?state.members[0].id:null; const storedScope=localStorage.getItem(scopeKey()); currentScope=(storedScope===null)?('m:'+ym(new Date())):(storedScope||null); if(currentScope&&currentScope.startsWith('g:')&&!groupById(currentScope.slice(2))) currentScope='m:'+ym(new Date()); }
+function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=(s.expenses||[]).map(e=>Object.assign({groupId:null,accountMonth:null},e)); s.closedMonths=s.closedMonths||{}; s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.groups=s.groups||[]; s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
 function saveLocal(){ localStorage.setItem(stateKey(),JSON.stringify(state)); if(me) localStorage.setItem(meKey(),me); rememberProject(); }
 function projects(){ try{ return JSON.parse(localStorage.getItem(LS_PROJECTS))||[]; }catch(e){ return []; } }
 function rememberProject(){ const code=syncCode||'local'; const list=projects().filter(p=>p.code!==code); list.unshift({code,name:state.projectName}); localStorage.setItem(LS_PROJECTS,JSON.stringify(list.slice(0,20))); }
@@ -430,7 +450,7 @@ function computeAlerts(y){
 function render(){
   $('projTitle').textContent=state.projectName||'Sincro'; document.title=(state.projectName||'Sincro')+' · Gastos compartidos';
   $('meAv').outerHTML=me?avHtml(me,'sm','id="meAv"'):'<span class="av sm" id="meAv" style="background:#ccc">?</span>';
-  const lbl=groupLabel(currentGroupId);
+  const lbl=scopeLabel(currentScope);
   ['scopeLabelHome','scopeLabelList','scopeLabelAna'].forEach(id=>{ if($(id)) $(id).textContent=lbl; });
   renderHome(); renderList(); renderAnalysis(); renderSettings();
   $('syncBadge').className='sync '+syncStatus;
@@ -458,10 +478,11 @@ function renderHome(){
   $('recentList').innerHTML=recent.length?recent.map(rowHtml).join(''):`<p class="empty">Todavía no hay ningún apunte. Pulsa el + para añadir el primero.</p>`;
   bindRows($('recentList'));
 }
+function accBadge(e){ const am=accountMonthOf(e); return am!==ym(e.date) ? ` · <span style="color:var(--blue)">cuenta en ${ymLabel(am)}</span>` : ''; }
 function rowHtml(e){
-  if(e.type==='transfer') return `<button class="row" data-id="${e.id}"><span class="emoji" style="--cb:#d1fae5">💸</span><span><span class="t">${esc(mname(e.payerId))} pagó a ${esc(mname(e.toId))}</span><br><span class="s">${dateLabel(e.date)}${e.note?' · '+esc(e.note):''}</span></span><span class="amt">${fmt(e.amount)}<small>pago</small></span></button>`;
+  if(e.type==='transfer') return `<button class="row" data-id="${e.id}"><span class="emoji" style="--cb:#d1fae5">💸</span><span><span class="t">${esc(mname(e.payerId))} pagó a ${esc(mname(e.toId))}</span><br><span class="s">${dateLabel(e.date)}${accBadge(e)}${e.note?' · '+esc(e.note):''}</span></span><span class="amt">${fmt(e.amount)}<small>pago</small></span></button>`;
   const c=cat(e.catId);
-  return `<button class="row" data-id="${e.id}"><span class="emoji" style="--cb:${catBg(e.catId)}">${c.emoji}</span><span><span class="t">${esc(e.concept||c.name)}</span><br><span class="s">${dateLabel(e.date)} · ${esc(c.name)} · pagó ${nameHtml(e.payerId)}${e.photoId?' · 📷':''}</span></span><span class="amt">${fmt(e.amount)}<small>${splitLabel(e)}</small></span></button>`;
+  return `<button class="row" data-id="${e.id}"><span class="emoji" style="--cb:${catBg(e.catId)}">${c.emoji}</span><span><span class="t">${esc(e.concept||c.name)}</span><br><span class="s">${dateLabel(e.date)} · ${esc(c.name)} · pagó ${nameHtml(e.payerId)}${accBadge(e)}${e.photoId?' · 📷':''}</span></span><span class="amt">${fmt(e.amount)}<small>${splitLabel(e)}</small></span></button>`;
 }
 function splitLabel(e){ const mode=(e.split&&e.split.mode)||'equal'; if(mode==='custom') return 'importes'; const p=participants(e); if(mode==='equal'||p.length===state.members.length) return state.members.length===2?'a medias':'entre todos'; if(p.length===1) return 'solo '+mname(p[0]); return 'entre '+p.length; }
 function bindRows(root){ root.querySelectorAll('.row').forEach(r=>r.onclick=()=>openDetail(r.dataset.id)); }
@@ -476,9 +497,14 @@ function renderList(){
   if(q) list=list.filter(e=>[e.concept,e.note,cat(e.catId).name,mname(e.payerId),e.toId?mname(e.toId):''].join(' ').toLowerCase().includes(q));
   list.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
   if(!list.length){ $('fullList').innerHTML=`<p class="empty">No hay apuntes que coincidan.</p>`; return; }
-  let html='',cur='';
-  for(const e of list){ const m=ym(e.date); if(m!==cur){ cur=m; const t=totalOf(list.filter(x=>x.type!=='transfer'&&ym(x.date)===m)); html+=`<div class="month-head"><h3>${ymLabel(m)}</h3><span class="muted">${fmt(t)}</span></div>`; } html+=rowHtml(e); }
+  const order=[]; const byMonth={};
+  for(const e of list){ const m=ym(e.date); if(!byMonth[m]){ byMonth[m]=[]; order.push(m); } byMonth[m].push(e); }
+  let html='';
+  order.forEach((m,i)=>{ const rows=byMonth[m]; const t=totalOf(rows.filter(x=>x.type!=='transfer')); const open=i===0;
+    html+=`<button class="month-head" data-m="${m}" style="width:100%;background:none;cursor:pointer;text-align:left"><h3>${open?'▾':'▸'} ${ymLabel(m).replace(/^\w/,c=>c.toUpperCase())}${isMonthClosed(m)?' 🔒':''}</h3><span class="muted">${fmt(t)}</span></button><div class="month-body ${open?'':'hide'}">${rows.map(rowHtml).join('')}</div>`;
+  });
   $('fullList').innerHTML=html; bindRows($('fullList'));
+  $('fullList').querySelectorAll('.month-head').forEach(h=>h.onclick=()=>{ const body=h.nextElementSibling; const willOpen=body.classList.contains('hide'); body.classList.toggle('hide'); const hh=h.querySelector('h3'); hh.textContent=(willOpen?'▾ ':'▸ ')+hh.textContent.replace(/^[▾▸]\s/,''); });
 }
 
 async function openDetail(id){
@@ -495,15 +521,20 @@ $('sheetBg').onclick=ev=>{ if(ev.target.id==='sheetBg') closeSheet(); };
 /* ---- FORMULARIO ---- */
 function openForm(e,preset){
   const others=state.members.filter(m=>m.id!==me);
-  form=e?JSON.parse(JSON.stringify(e)):Object.assign({id:null,type:'gasto',amount:'',concept:'',payerId:me||(state.members[0]||{}).id,toId:(others[0]||{}).id,catId:(state.categories[0]||{}).id,split:{mode:'equal'},date:todayStr(),note:'',photoId:null,groupId:currentGroupId},preset||{});
+  const defGroupId=(currentScope&&currentScope.startsWith('g:'))?currentScope.slice(2):null;
+  form=e?JSON.parse(JSON.stringify(e)):Object.assign({id:null,type:'gasto',amount:'',concept:'',payerId:me||(state.members[0]||{}).id,toId:(others[0]||{}).id,catId:(state.categories[0]||{}).id,split:{mode:'equal'},date:todayStr(),note:'',photoId:null,groupId:defGroupId,accountMonth:(currentScope&&currentScope.startsWith('m:'))?currentScope.slice(2):null},preset||{});
+  if(!form.accountMonth) form.accountMonth=ym(form.date||todayStr());
+  accMonthTouched=false;
   form._photoData=null; form._photoRemoved=false;
-  $('fAmount').value=form.amount===''?'':fmtN(form.amount); $('fConcept').value=form.concept||''; $('fDate').value=form.date; $('fNote').value=form.note||'';
+  $('fAmount').value=form.amount===''?'':fmtN(form.amount); $('fConcept').value=form.concept||''; $('fDate').value=form.date; $('fAccMonth').value=form.accountMonth||ym(form.date); $('fNote').value=form.note||'';
   $('fDelete').classList.toggle('hide',!e);
   $('fPhotoPrev').classList.add('hide'); $('fPhotoDel').classList.add('hide'); $('fPhoto').value='';
   if(form.photoId) getPhoto(form.photoId).then(d=>{ if(d&&form&&form.photoId){ $('fPhotoPrev').src=d; $('fPhotoPrev').classList.remove('hide'); $('fPhotoDel').classList.remove('hide'); } });
   $('conceptList').innerHTML=[...new Set(state.expenses.map(x=>x.concept).filter(Boolean))].slice(0,60).map(c=>`<option value="${esc(c)}">`).join('');
   $('fGroup').innerHTML=groupOptionsHtml(form.groupId||'');
   $('fSplitCustom').innerHTML=''; syncFormUi(true);
+  $('fDate').onchange=()=>{ if(!accMonthTouched) $('fAccMonth').value=ym($('fDate').value||todayStr()); };
+  $('fAccMonth').onchange=()=>{ accMonthTouched=true; };
 }
 function syncFormUi(reset){
   const tr=form.type==='transfer';
@@ -546,7 +577,8 @@ $('fSave').onclick=()=>{
   const amt=parseNum($('fAmount').value); if(isNaN(amt)||amt<=0){ toast('Escribe un importe válido'); $('fAmount').focus(); return; }
   if(!form.payerId){ toast('Elige quién paga'); return; }
   const gid=$('fGroup').value||null; const gsel=gid?groupById(gid):null; if(gsel&&gsel.closed){ toast('Esa carpeta está cerrada; elige otra o reábrela'); return; }
-  const e={ id:form.id||uid(), type:form.type, amount:Math.round(amt*100)/100, concept:$('fConcept').value.trim(), payerId:form.payerId, toId:form.type==='transfer'?form.toId:null, catId:form.type==='transfer'?null:form.catId, split:{mode:'equal'}, date:$('fDate').value||todayStr(), note:$('fNote').value.trim(), photoId:form.photoId||null, groupId:gid, createdAt:form.createdAt||Date.now(), updatedAt:Date.now() };
+  const accM=$('fAccMonth').value||ym($('fDate').value||todayStr()); if(isMonthClosed(accM)&&(!form.id||accountMonthOf(state.expenses.find(x=>x.id===form.id)||{})!==accM)){ toast('Ese mes está cerrado; cambia el mes contable o reábrelo en Ajustes'); return; }
+  const e={ id:form.id||uid(), type:form.type, amount:Math.round(amt*100)/100, concept:$('fConcept').value.trim(), payerId:form.payerId, toId:form.type==='transfer'?form.toId:null, catId:form.type==='transfer'?null:form.catId, split:{mode:'equal'}, date:$('fDate').value||todayStr(), note:$('fNote').value.trim(), photoId:form.photoId||null, groupId:gid, accountMonth:accM, createdAt:form.createdAt||Date.now(), updatedAt:Date.now() };
   if(e.type==='transfer'){ if(!e.toId||e.toId===e.payerId){ toast('Elige a quién se paga'); return; } e.photoId=null; e.concept=''; }
   else{
     const mode=(form.split&&form.split.mode)||'equal';
@@ -647,9 +679,10 @@ function openMemberSheet(m){
 }
 
 function groupRowHtml(g,level){
-  return `<div class="group-row ${g.closed?'closed':''}" data-g="${g.id}" style="padding-left:${level*22}px">
+  const sc='g:'+g.id;
+  return `<div class="group-row ${g.closed?'closed':''}" data-scope="${sc}" style="padding-left:${level*22}px">
     <div class="box">${g.closed?'🔒':'📁'}</div>
-    <div><div class="n">${esc(g.name)}${currentGroupId===g.id?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${g.closed?'cerrada':'abierta'}</div></div>
+    <div><div class="n">${esc(g.name)}${currentScope===sc?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${g.closed?'cerrada':'abierta'}</div></div>
     <div class="acts">
       <button class="btn ghost sm" data-act="open">Ver</button>
       ${level===0&&!g.closed?'<button class="btn ghost sm" data-act="sub">+Sub</button>':''}
@@ -657,31 +690,45 @@ function groupRowHtml(g,level){
     </div>
   </div>`;
 }
+function monthRowHtml(mm){
+  const closed=isMonthClosed(mm); const sc='m:'+mm; const label=ymLabel(mm).replace(/^\w/,c=>c.toUpperCase());
+  return `<div class="group-row ${closed?'closed':''}" data-scope="${sc}">
+    <div class="box">${closed?'🔒':'🗓️'}</div>
+    <div><div class="n">${label}${currentScope===sc?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${closed?'cerrado':'abierto'}</div></div>
+    <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button><button class="btn ghost sm" data-act="${closed?'reopenM':'closeM'}" data-mm="${mm}">${closed?'Reabrir':'Cerrar'}</button></div>
+  </div>`;
+}
 function openGroupsSheet(){
   const sh=$('sheet');
   const draw=()=>{
-    let html=`<h2>Carpetas</h2>
-      <div class="group-row ${!currentGroupId?'':''}" data-g="">
+    let html=`<h2>Ver por</h2>
+      <div class="group-row" data-scope="">
         <div class="box">🗂️</div>
-        <div><div class="n">Todo el proyecto${!currentGroupId?' <span class="muted small">(viendo)</span>':''}</div><div class="s">Sin filtrar</div></div>
+        <div><div class="n">Todo el proyecto${!currentScope?' <span class="muted small">(viendo)</span>':''}</div><div class="s">Sin filtrar</div></div>
         <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button></div>
-      </div>`;
+      </div>
+      <h3 style="margin-top:16px">Meses</h3>`;
+    availableMonths().forEach(mm=>{ html+=monthRowHtml(mm); });
+    html+=`<h3 style="margin-top:16px">Otras carpetas</h3>`;
+    if(!state.groups.length) html+=`<p class="help">Para agrupar algo aparte de los meses, como un viaje, crea una carpeta.</p>`;
     state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=groupRowHtml(g,0); groupChildren(g.id).forEach(c=>{ html+=groupRowHtml(c,1); }); });
     html+=`<div class="form-actions" style="margin-top:16px"><button class="btn ghost" id="gSheetClose">Cerrar</button><button class="btn primary" id="gSheetNew">+ Nueva carpeta</button></div>`;
     sh.innerHTML=html;
     sh.querySelectorAll('.group-row').forEach(row=>{
-      const gid=row.dataset.g; const g=gid?groupById(gid):null;
+      const scope=row.dataset.scope; const gid=scope&&scope.startsWith('g:')?scope.slice(2):null; const g=gid?groupById(gid):null;
       row.querySelectorAll('button').forEach(btn=>btn.onclick=(ev)=>{
         ev.stopPropagation();
         const act=btn.dataset.act;
-        if(act==='open'){ setCurrentGroup(gid||null); closeSheet(); }
+        if(act==='open'){ setCurrentScope(scope||null); closeSheet(); }
         else if(act==='sub'){ const n=prompt('Nombre de la subcarpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:g.id,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); }
         else if(act==='close'){ closeGroupFlow(g,draw); }
         else if(act==='reopen'){ g.closed=false; g.closedAt=null; commit(); draw(); }
+        else if(act==='closeM'){ closeMonthFlow(btn.dataset.mm,draw); }
+        else if(act==='reopenM'){ reopenMonth(btn.dataset.mm,draw); }
       });
     });
     $('gSheetClose').onclick=closeSheet;
-    $('gSheetNew').onclick=()=>{ const n=prompt('Nombre de la carpeta (por ejemplo, un año o un mes):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:null,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); };
+    $('gSheetNew').onclick=()=>{ const n=prompt('Nombre de la carpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:null,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); };
   };
   draw(); $('sheetBg').classList.add('open');
 }
