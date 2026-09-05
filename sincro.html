@@ -143,6 +143,13 @@
   .period h2{text-align:center;flex:1;text-transform:capitalize} .period .btn{min-width:56px;padding:0}
 
   .set-block{margin-top:26px;padding-top:18px;border-top:2px solid var(--ink)} .set-block h2{margin-bottom:12px}
+  .scope-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:var(--soft);font-weight:700;border:0;font-size:.95rem;margin-bottom:14px;max-width:100%}
+  .scope-pill span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .group-row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+  .group-row .box{width:44px;height:44px;border-radius:12px;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
+  .group-row.closed .box{background:var(--soft)}
+  .group-row .n{font-weight:700} .group-row .s{font-size:.85rem;color:var(--ink-2)}
+  .group-row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
   .cat-edit{display:grid;grid-template-columns:56px 1fr 100px 100px 44px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
   .cat-edit .input{min-height:46px;padding:6px 10px;font-size:1rem}
   .cat-edit .x{border:0;background:none;font-size:1.4rem;color:var(--bad);min-height:44px}
@@ -183,8 +190,8 @@
   <p class="muted">Gastos compartidos, cuentas claras.</p>
   <div class="field">
     <div class="seg" id="setupMode">
-      <button type="button" data-mode="new" class="on">Crear un proyecto</button>
-      <button type="button" data-mode="join">Tengo un código</button>
+      <button type="button" data-mode="new" class="on">Crear proyecto nuevo</button>
+      <button type="button" data-mode="join">Cargar proyecto existente</button>
     </div>
   </div>
   <div id="setupNew">
@@ -192,7 +199,8 @@
     <div class="field"><label for="setupMyName">Tu nombre</label><input id="setupMyName" class="input" placeholder="p. ej. Rafa" autocomplete="off"><div class="help">Después podrás invitar a más personas desde Ajustes, cada una con su propio código.</div></div>
   </div>
   <div id="setupJoin" class="hide">
-    <div class="field"><label for="setupCode">Tu código de invitación</label><input id="setupCode" class="input" placeholder="p. ej. cristina-k3f9" autocapitalize="off" autocomplete="off"><div class="help">Te lo ha mandado la persona que creó el proyecto. Escríbelo exactamente igual.</div></div>
+    <div id="setupRecent"></div>
+    <div class="field"><label for="setupCode">Tu código</label><input id="setupCode" class="input" placeholder="p. ej. cristina-k3f9" autocapitalize="off" autocomplete="off"><div class="help">Tu código personal, o el que te haya pasado quien creó el proyecto.</div></div>
   </div>
   <button class="btn primary block" id="setupGo">Entrar</button>
   <p class="muted small" id="setupMsg" style="margin-top:16px"></p>
@@ -206,6 +214,7 @@
 
   <main>
     <section class="view active" id="v-inicio">
+      <button class="scope-pill" id="scopePillHome">📁 <span class="t" id="scopeLabelHome">Todo el proyecto</span> ▾</button>
       <div class="hero-card"><h2>Saldo del grupo</h2><div class="people" id="people"></div><div class="settle" id="settle"></div></div>
       <div class="alerts" id="alerts"></div>
       <div class="block">
@@ -216,6 +225,7 @@
     </section>
 
     <section class="view" id="v-gastos">
+      <button class="scope-pill" id="scopePillList">📁 <span class="t" id="scopeLabelList">Todo el proyecto</span> ▾</button>
       <div class="field" style="margin-bottom:10px"><label for="q" class="sr">Buscar</label><input id="q" class="input" placeholder="Buscar por concepto, categoría, nota o persona"></div>
       <div class="seg" id="filterCat" style="margin-bottom:6px"></div>
       <div id="fullList"></div>
@@ -236,6 +246,7 @@
         <div class="split-custom hide" id="fSplitCustom"></div>
         <div class="help" id="fSplitHelp"></div>
       </div>
+      <div class="field"><label for="fGroup">Carpeta</label><select id="fGroup" class="input"></select></div>
       <div class="field"><label for="fDate">Fecha</label><input id="fDate" class="input" type="date"></div>
       <div class="field"><label for="fNote">Nota</label><textarea id="fNote" class="input" placeholder="Opcional"></textarea></div>
       <div class="field" id="fPhotoWrap">
@@ -248,6 +259,7 @@
     </section>
 
     <section class="view" id="v-analisis">
+      <button class="scope-pill" id="scopePillAna">📁 <span class="t" id="scopeLabelAna">Todo el proyecto</span> ▾</button>
       <div class="period"><button class="btn ghost" id="prevMonth" aria-label="Mes anterior">‹</button><h2 id="anaMonth"></h2><button class="btn ghost" id="nextMonth" aria-label="Mes siguiente">›</button></div>
       <div class="kpis" id="anaKpis"></div>
       <div class="block"><h3>Por categoría, frente a presupuesto y media</h3><div class="bars" id="anaCats"></div></div>
@@ -285,9 +297,11 @@
         <div class="field"><label for="setProjName">Nombre</label><input id="setProjName" class="input" placeholder="p. ej. Casa 2026"></div>
         <p class="small muted">Identificador interno: <code id="setCode"></code></p>
         <div class="form-actions"><button class="btn ghost" id="forcePush">Volver a subir todo</button></div>
+        <div class="form-actions" style="margin-top:12px"><button class="btn ghost block" id="openGroupsFromSettings">Gestionar carpetas del proyecto</button></div>
+        <div class="field" style="margin-top:18px" id="myCodeWrap"><label>Tu código personal</label><div class="inline"><code id="myCodeVal" style="flex:1">—</code><button class="btn ghost sm" id="myCodeShare">Enviar</button></div><div class="help">Guárdalo. Con él recuperas el acceso a este proyecto desde cualquier móvil, aunque borres los datos de este.</div></div>
         <h3 style="margin-top:22px">Mis proyectos</h3>
         <div class="list" id="projList"></div>
-        <div class="form-actions" style="margin-top:12px"><button class="btn ghost" id="newProj">Nuevo proyecto</button><button class="btn ghost" id="joinProj">Entrar con un código</button></div>
+        <div class="form-actions" style="margin-top:12px"><button class="btn ghost" id="newProj">Nuevo proyecto</button><button class="btn ghost" id="joinProj">Cargar con un código</button></div>
       </div>
 
       <div class="set-block">
@@ -336,10 +350,11 @@ const CAT_BG=['#fce7f3','#dcfce7','#dbeafe','#fef3c7','#ede9fe','#ffe4e6','#cffa
 function catBg(id){ const i=state.categories.findIndex(c=>c.id===id); return CAT_BG[(i<0?7:i)%CAT_BG.length]; }
 const AVATARS=['🦊','🐼','🦁','🐯','🐸','🐙','🦉','🐺','🦄','🐲','🐧','🐨','🐻','🦝','🐬','🦩','🐝','🦖','🐢','🦜','🐹','🦔','🐳','🦋'];
 
-function freshState(){ return { projectName:'Sincro', members:[], categories:JSON.parse(JSON.stringify(DEFAULT_CATS)), expenses:[], settings:{monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null}, updatedAt:0 }; }
+function freshState(){ return { projectName:'Sincro', members:[], categories:JSON.parse(JSON.stringify(DEFAULT_CATS)), expenses:[], groups:[], settings:{monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null}, updatedAt:0 }; }
 function newMember(name,i){ return {id:'m'+uid(),name,color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null}; }
 
-let state=freshState(), me=null, syncCode=localStorage.getItem(LS_CODE)||'', view='inicio', anaYm=ym(new Date()), form=null, charts={};
+let state=freshState(), me=null, syncCode=localStorage.getItem(LS_CODE)||'', view='inicio', anaYm=ym(new Date()), form=null, charts={}, currentGroupId=null;
+const groupKey=()=>'encomun_group_'+(syncCode||'local');
 const photoCache={};
 
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
@@ -359,11 +374,20 @@ const $=id=>document.getElementById(id);
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 function avHtml(m,cls,extra){ m=typeof m==='string'?member(m):m; const a=m.avatar||{}; const inner=a.type==='photo'?`<img src="${a.value}" alt="">`:(a.type==='emoji'?a.value:esc((m.name||'?')[0].toUpperCase())); return `<span class="av ${cls||''}" ${extra||''} style="background:${a.type==='photo'?'#fff':m.color}">${inner}</span>`; }
 const nameHtml=id=>`<span class="name" style="color:${member(id).color}">${esc(mname(id))}</span>`;
+function groupById(id){ return state.groups.find(g=>g.id===id)||null; }
+function groupChildren(id){ return state.groups.filter(g=>g.parentId===id); }
+function groupDepth(id){ let d=0,g=groupById(id); while(g&&g.parentId){d++; g=groupById(g.parentId);} return d; }
+function groupDescendantIds(id){ const out=[id]; groupChildren(id).forEach(c=>out.push(...groupDescendantIds(c.id))); return out; }
+function groupLabel(id){ if(!id) return 'Todo el proyecto'; const g=groupById(id); return g?(g.name+(g.closed?' 🔒':'')):'Todo el proyecto'; }
+function setCurrentGroup(id){ currentGroupId=id||null; if(currentGroupId) localStorage.setItem(groupKey(),currentGroupId); else localStorage.removeItem(groupKey()); render(); }
+function scopedExpenses(){ if(!currentGroupId) return state.expenses; const ids=groupDescendantIds(currentGroupId); return state.expenses.filter(e=>e.groupId&&ids.includes(e.groupId)); }
+function groupOptionsHtml(selected){ let html=`<option value="">General (sin carpeta)</option>`; state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=`<option value="${g.id}" ${selected===g.id?'selected':''}>${esc(g.name)}${g.closed?' 🔒':''}</option>`; groupChildren(g.id).forEach(c=>{ html+=`<option value="${c.id}" ${selected===c.id?'selected':''}>\u00A0\u00A0↳ ${esc(c.name)}${c.closed?' 🔒':''}</option>`; }); }); return html; }
+function computeBalancesFor(list){ const b={}; state.members.forEach(m=>b[m.id]=0); for(const e of list){ if(e.type==='transfer'){ b[e.payerId]=(b[e.payerId]||0)+e.amount; b[e.toId]=(b[e.toId]||0)-e.amount; } else { b[e.payerId]=(b[e.payerId]||0)+e.amount; for(const m of state.members) b[m.id]-=shareOf(e,m.id); } } return b; }
 function slug(t){ return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 function genCode(name){ return (slug(name)||'x')+'-'+Math.random().toString(36).slice(2,6); }
 
-function loadLocal(){ state=freshState(); try{ const s=JSON.parse(localStorage.getItem(stateKey())); if(s&&s.members) state=migrate(s); }catch(e){} me=localStorage.getItem(meKey())||null; if(!state.members.find(m=>m.id===me)) me=state.members[0]?state.members[0].id:null; }
-function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=s.expenses||[]; s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
+function loadLocal(){ state=freshState(); try{ const s=JSON.parse(localStorage.getItem(stateKey())); if(s&&s.members) state=migrate(s); }catch(e){} me=localStorage.getItem(meKey())||null; if(!state.members.find(m=>m.id===me)) me=state.members[0]?state.members[0].id:null; currentGroupId=localStorage.getItem(groupKey())||null; if(currentGroupId&&!groupById(currentGroupId)) currentGroupId=null; }
+function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=(s.expenses||[]).map(e=>Object.assign({groupId:null},e)); s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.groups=s.groups||[]; s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
 function saveLocal(){ localStorage.setItem(stateKey(),JSON.stringify(state)); if(me) localStorage.setItem(meKey(),me); rememberProject(); }
 function projects(){ try{ return JSON.parse(localStorage.getItem(LS_PROJECTS))||[]; }catch(e){ return []; } }
 function rememberProject(){ const code=syncCode||'local'; const list=projects().filter(p=>p.code!==code); list.unshift({code,name:state.projectName}); localStorage.setItem(LS_PROJECTS,JSON.stringify(list.slice(0,20))); }
@@ -372,14 +396,7 @@ function commit(){ state.updatedAt=Date.now(); saveLocal(); schedulePush(); rend
 /* ============================ CÁLCULOS ============================ */
 function participants(e){ if(e.split&&e.split.mode==='some'&&e.split.among&&e.split.among.length) return e.split.among.filter(id=>state.members.some(m=>m.id===id)); if(e.split&&e.split.mode==='custom') return Object.keys(e.split.shares||{}); return state.members.map(m=>m.id); }
 function shareOf(e,mid){ if(e.type==='transfer') return 0; if(e.split&&e.split.mode==='custom') return Number((e.split.shares||{})[mid]||0); const p=participants(e); if(!p.includes(mid)||!p.length) return 0; return e.amount/p.length; }
-function balances(){
-  const b={}; state.members.forEach(m=>b[m.id]=0);
-  for(const e of state.expenses){
-    if(e.type==='transfer'){ b[e.payerId]=(b[e.payerId]||0)+e.amount; b[e.toId]=(b[e.toId]||0)-e.amount; }
-    else{ b[e.payerId]=(b[e.payerId]||0)+e.amount; for(const m of state.members) b[m.id]-=shareOf(e,m.id); }
-  }
-  return b;
-}
+function balances(){ return computeBalancesFor(scopedExpenses()); }
 function settlements(b){
   const cr=[],db=[]; for(const id in b){ const v=Math.round(b[id]*100)/100; if(v>0.004) cr.push({id,v}); else if(v<-0.004) db.push({id,v:-v}); }
   cr.sort((a,b)=>b.v-a.v); db.sort((a,b)=>b.v-a.v);
@@ -387,7 +404,7 @@ function settlements(b){
   while(i<db.length&&j<cr.length){ const x=Math.min(db[i].v,cr[j].v); if(x>0.004) out.push({from:db[i].id,to:cr[j].id,amount:Math.round(x*100)/100}); db[i].v-=x; cr[j].v-=x; if(db[i].v<0.005)i++; if(cr[j].v<0.005)j++; }
   return out;
 }
-const expensesOf=y=>state.expenses.filter(e=>e.type!=='transfer'&&ym(e.date)===y);
+const expensesOf=y=>scopedExpenses().filter(e=>e.type!=='transfer'&&ym(e.date)===y);
 const totalOf=list=>list.reduce((s,e)=>s+e.amount,0);
 function catTotals(y){ const t={}; for(const e of expensesOf(y)) t[e.catId]=(t[e.catId]||0)+e.amount; return t; }
 function avgCat(catId,y,n){ if(!n) return null; let sum=0,count=0; for(let i=1;i<=n;i++){ const list=expensesOf(shiftYm(y,-i)); if(!list.length) continue; sum+=list.filter(e=>e.catId===catId).reduce((s,e)=>s+e.amount,0); count++; } return count?sum/count:null; }
@@ -413,6 +430,8 @@ function computeAlerts(y){
 function render(){
   $('projTitle').textContent=state.projectName||'Sincro'; document.title=(state.projectName||'Sincro')+' · Gastos compartidos';
   $('meAv').outerHTML=me?avHtml(me,'sm','id="meAv"'):'<span class="av sm" id="meAv" style="background:#ccc">?</span>';
+  const lbl=groupLabel(currentGroupId);
+  ['scopeLabelHome','scopeLabelList','scopeLabelAna'].forEach(id=>{ if($(id)) $(id).textContent=lbl; });
   renderHome(); renderList(); renderAnalysis(); renderSettings();
   $('syncBadge').className='sync '+syncStatus;
   $('syncText').textContent={off:'solo este móvil',connecting:'conectando…',on:'sincronizado',error:'error de sincronización'}[syncStatus];
@@ -452,7 +471,7 @@ function renderList(){
   const fc=$('filterCat');
   fc.innerHTML=`<button data-c="all" class="${filterCat==='all'?'on':''}">Todo</button>`+state.categories.map(c=>`<button data-c="${c.id}" class="${filterCat===c.id?'on':''}">${c.emoji}</button>`).join('')+`<button data-c="transfer" class="${filterCat==='transfer'?'on':''}">💸</button>`;
   fc.querySelectorAll('button').forEach(b=>b.onclick=()=>{filterCat=b.dataset.c;renderList();});
-  const q=($('q').value||'').toLowerCase().trim(); let list=[...state.expenses];
+  const q=($('q').value||'').toLowerCase().trim(); let list=[...scopedExpenses()];
   if(filterCat==='transfer') list=list.filter(e=>e.type==='transfer'); else if(filterCat!=='all') list=list.filter(e=>e.type!=='transfer'&&e.catId===filterCat);
   if(q) list=list.filter(e=>[e.concept,e.note,cat(e.catId).name,mname(e.payerId),e.toId?mname(e.toId):''].join(' ').toLowerCase().includes(q));
   list.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
@@ -476,13 +495,14 @@ $('sheetBg').onclick=ev=>{ if(ev.target.id==='sheetBg') closeSheet(); };
 /* ---- FORMULARIO ---- */
 function openForm(e,preset){
   const others=state.members.filter(m=>m.id!==me);
-  form=e?JSON.parse(JSON.stringify(e)):Object.assign({id:null,type:'gasto',amount:'',concept:'',payerId:me||(state.members[0]||{}).id,toId:(others[0]||{}).id,catId:(state.categories[0]||{}).id,split:{mode:'equal'},date:todayStr(),note:'',photoId:null},preset||{});
+  form=e?JSON.parse(JSON.stringify(e)):Object.assign({id:null,type:'gasto',amount:'',concept:'',payerId:me||(state.members[0]||{}).id,toId:(others[0]||{}).id,catId:(state.categories[0]||{}).id,split:{mode:'equal'},date:todayStr(),note:'',photoId:null,groupId:currentGroupId},preset||{});
   form._photoData=null; form._photoRemoved=false;
   $('fAmount').value=form.amount===''?'':fmtN(form.amount); $('fConcept').value=form.concept||''; $('fDate').value=form.date; $('fNote').value=form.note||'';
   $('fDelete').classList.toggle('hide',!e);
   $('fPhotoPrev').classList.add('hide'); $('fPhotoDel').classList.add('hide'); $('fPhoto').value='';
   if(form.photoId) getPhoto(form.photoId).then(d=>{ if(d&&form&&form.photoId){ $('fPhotoPrev').src=d; $('fPhotoPrev').classList.remove('hide'); $('fPhotoDel').classList.remove('hide'); } });
   $('conceptList').innerHTML=[...new Set(state.expenses.map(x=>x.concept).filter(Boolean))].slice(0,60).map(c=>`<option value="${esc(c)}">`).join('');
+  $('fGroup').innerHTML=groupOptionsHtml(form.groupId||'');
   $('fSplitCustom').innerHTML=''; syncFormUi(true);
 }
 function syncFormUi(reset){
@@ -525,7 +545,8 @@ $('fPhotoDel').onclick=()=>{ form._photoData=null; form._photoRemoved=true; $('f
 $('fSave').onclick=()=>{
   const amt=parseNum($('fAmount').value); if(isNaN(amt)||amt<=0){ toast('Escribe un importe válido'); $('fAmount').focus(); return; }
   if(!form.payerId){ toast('Elige quién paga'); return; }
-  const e={ id:form.id||uid(), type:form.type, amount:Math.round(amt*100)/100, concept:$('fConcept').value.trim(), payerId:form.payerId, toId:form.type==='transfer'?form.toId:null, catId:form.type==='transfer'?null:form.catId, split:{mode:'equal'}, date:$('fDate').value||todayStr(), note:$('fNote').value.trim(), photoId:form.photoId||null, createdAt:form.createdAt||Date.now(), updatedAt:Date.now() };
+  const gid=$('fGroup').value||null; const gsel=gid?groupById(gid):null; if(gsel&&gsel.closed){ toast('Esa carpeta está cerrada; elige otra o reábrela'); return; }
+  const e={ id:form.id||uid(), type:form.type, amount:Math.round(amt*100)/100, concept:$('fConcept').value.trim(), payerId:form.payerId, toId:form.type==='transfer'?form.toId:null, catId:form.type==='transfer'?null:form.catId, split:{mode:'equal'}, date:$('fDate').value||todayStr(), note:$('fNote').value.trim(), photoId:form.photoId||null, groupId:gid, createdAt:form.createdAt||Date.now(), updatedAt:Date.now() };
   if(e.type==='transfer'){ if(!e.toId||e.toId===e.payerId){ toast('Elige a quién se paga'); return; } e.photoId=null; e.concept=''; }
   else{
     const mode=(form.split&&form.split.mode)||'equal';
@@ -596,6 +617,7 @@ function renderSettings(){
   });
   $('setMonthlyBudget').value=state.settings.monthlyBudget!=null?fmtN(state.settings.monthlyBudget):''; $('setAvgMonths').value=state.settings.avgMonths??3; $('setAvgPct').value=state.settings.avgPct??20; $('setBigOne').value=state.settings.bigOne!=null?fmtN(state.settings.bigOne):'';
   $('setProjName').value=state.projectName||''; $('setCode').textContent=syncCode||'(solo este móvil)';
+  const myM=state.members.find(x=>x.id===me); $('myCodeVal').textContent=myM&&myM.inviteCode?myM.inviteCode:'(aún no generado; hace falta conexión)';
   const cur=syncCode||'local';
   $('projList').innerHTML=projects().map(p=>`<button class="row" data-code="${esc(p.code)}"><span class="emoji">${p.code===cur?'✅':'📁'}</span><span><span class="t">${esc(p.name)}</span><br><span class="s">${p.code==='local'?'solo este móvil':'sincronizado'}</span></span><span class="amt small">${p.code===cur?'abierto':'abrir'}</span></button>`).join('');
   $('projList').querySelectorAll('.row').forEach(b=>b.onclick=()=>{ if(b.dataset.code===cur) return; switchProject(b.dataset.code==='local'?'':b.dataset.code); });
@@ -623,6 +645,60 @@ function openMemberSheet(m){
   };
   draw(); $('sheetBg').classList.add('open');
 }
+
+function groupRowHtml(g,level){
+  return `<div class="group-row ${g.closed?'closed':''}" data-g="${g.id}" style="padding-left:${level*22}px">
+    <div class="box">${g.closed?'🔒':'📁'}</div>
+    <div><div class="n">${esc(g.name)}${currentGroupId===g.id?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${g.closed?'cerrada':'abierta'}</div></div>
+    <div class="acts">
+      <button class="btn ghost sm" data-act="open">Ver</button>
+      ${level===0&&!g.closed?'<button class="btn ghost sm" data-act="sub">+Sub</button>':''}
+      <button class="btn ghost sm" data-act="${g.closed?'reopen':'close'}">${g.closed?'Reabrir':'Cerrar'}</button>
+    </div>
+  </div>`;
+}
+function openGroupsSheet(){
+  const sh=$('sheet');
+  const draw=()=>{
+    let html=`<h2>Carpetas</h2>
+      <div class="group-row ${!currentGroupId?'':''}" data-g="">
+        <div class="box">🗂️</div>
+        <div><div class="n">Todo el proyecto${!currentGroupId?' <span class="muted small">(viendo)</span>':''}</div><div class="s">Sin filtrar</div></div>
+        <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button></div>
+      </div>`;
+    state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=groupRowHtml(g,0); groupChildren(g.id).forEach(c=>{ html+=groupRowHtml(c,1); }); });
+    html+=`<div class="form-actions" style="margin-top:16px"><button class="btn ghost" id="gSheetClose">Cerrar</button><button class="btn primary" id="gSheetNew">+ Nueva carpeta</button></div>`;
+    sh.innerHTML=html;
+    sh.querySelectorAll('.group-row').forEach(row=>{
+      const gid=row.dataset.g; const g=gid?groupById(gid):null;
+      row.querySelectorAll('button').forEach(btn=>btn.onclick=(ev)=>{
+        ev.stopPropagation();
+        const act=btn.dataset.act;
+        if(act==='open'){ setCurrentGroup(gid||null); closeSheet(); }
+        else if(act==='sub'){ const n=prompt('Nombre de la subcarpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:g.id,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); }
+        else if(act==='close'){ closeGroupFlow(g,draw); }
+        else if(act==='reopen'){ g.closed=false; g.closedAt=null; commit(); draw(); }
+      });
+    });
+    $('gSheetClose').onclick=closeSheet;
+    $('gSheetNew').onclick=()=>{ const n=prompt('Nombre de la carpeta (por ejemplo, un año o un mes):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:null,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); };
+  };
+  draw(); $('sheetBg').classList.add('open');
+}
+function closeGroupFlow(g,after){
+  const ids=groupDescendantIds(g.id);
+  const list=state.expenses.filter(e=>e.groupId&&ids.includes(e.groupId));
+  const b=computeBalancesFor(list); const st=settlements(b);
+  const msg = st.length ? ('Antes de cerrar, esto queda pendiente:\n\n'+st.map(d=>`${mname(d.from)} debe ${fmt(d.amount)} a ${mname(d.to)}`).join('\n')+'\n\n¿Cerrar de todas formas? Podrás reabrirla si hace falta.') : '¿Cerrar esta carpeta? No se podrán añadir más gastos aquí hasta que la reabras.';
+  if(!confirm(msg)) return;
+  g.closed=true; g.closedAt=Date.now(); g.closedSummary={balances:b,settlements:st};
+  commit(); if(after) after();
+}
+async function ensureMyCode(){
+  if(!syncCode) return; const m=state.members.find(x=>x.id===me); if(!m||m.inviteCode) return;
+  m.inviteCode=genCode(m.name); saveLocal(); await writeInvite(m); schedulePush();
+}
+
 async function invite(){
   if(!syncCode){ toast('Este proyecto no está sincronizado; no se pueden enviar invitaciones'); return; }
   const n=prompt('Nombre de la persona a la que invitas:',''); if(!n||!n.trim()) return;
@@ -640,9 +716,11 @@ function settingsBind(){
   $('setProjName').onchange=guard(()=>{state.projectName=$('setProjName').value.trim()||'Sincro';});
   $('addCat').onclick=()=>{ state.categories.push({id:uid(),emoji:'🆕',name:'Nueva categoría',budget:null,limit:null}); commit(); };
   $('inviteBtn').onclick=invite;
+  $('openGroupsFromSettings').onclick=openGroupsSheet;
+  $('myCodeShare').onclick=()=>{ const m=state.members.find(x=>x.id===me); if(!m||!m.inviteCode){ toast('Aún no tienes código; espera a que sincronice'); return; } shareInvite(m); };
   $('forcePush').onclick=()=>{ pushToCloudNow(true); toast('Subiendo todo…'); };
   $('newProj').onclick=()=>{ const n=prompt('Nombre del nuevo proyecto:',''); if(!n||!n.trim()) return; const my=prompt('Tu nombre en este proyecto:',me?mname(me):''); if(!my||!my.trim()) return; createProject(n.trim(),my.trim()); };
-  $('joinProj').onclick=()=>{ const c=prompt('Tu código de invitación:',''); if(!c||!c.trim()) return; joinWithCode(c.trim()).then(ok=>{ if(!ok) toast('Ese código no existe o no hay conexión'); }); };
+  $('joinProj').onclick=()=>{ const c=prompt('Tu código (personal o de proyecto):',''); if(!c||!c.trim()) return; joinWithCode(c.trim()).then(ok=>{ if(!ok) toast('Ese código no existe o no hay conexión'); }); };
   $('syncBadge').onclick=()=>{ if(syncStatus==='error') alert('No se ha podido sincronizar.\n\nMotivo: '+(syncErr||'desconocido')+'\n\nSi estás viendo la app dentro de Claude, es normal: ahí las conexiones están bloqueadas. Ábrela desde su dirección de GitHub Pages.'); else if(syncStatus==='off') alert('Este proyecto solo existe en este móvil. Para compartirlo, crea un proyecto nuevo desde Ajustes.'); };
   $('exportCsv').onclick=exportCsv; $('exportJson').onclick=exportJson;
   $('importJson').onchange=ev=>{ const f=ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const s=JSON.parse(r.result); if(!s.members||!s.expenses) throw 0; if(!confirm('Esto sustituye todos los datos actuales por los de la copia. ¿Continuar?')) return; state=migrate(s); if(!state.members.find(m=>m.id===me)) me=(state.members[0]||{}).id||null; commit(); toast('Copia restaurada'); }catch(e){ toast('El archivo no es una copia válida'); } ev.target.value=''; }; r.readAsText(f); };
@@ -688,7 +766,7 @@ async function startSync(){
   try{
     const snap=await docRef().get();
     if(snap.exists){ const remote=snap.data(); if(!(state.expenses.length&&(!remote.updatedAt||remote.updatedAt<state.updatedAt))) applyRemote(remote); }
-    syncStatus='on'; await pushToCloudNow(); if(unsub) unsub();
+    syncStatus='on'; await pushToCloudNow(); ensureMyCode(); if(unsub) unsub();
     unsub=docRef().onSnapshot(s=>{ if(s.exists&&!s.metadata.hasPendingWrites) applyRemote(s.data()); },e=>{ syncErr=e.message||String(e); syncStatus='error'; render(); });
     render();
   }catch(e){ syncErr=e.message||String(e); syncStatus='error'; render(); }
@@ -708,8 +786,10 @@ async function joinWithCode(code){
 
 /* ============================ ARRANQUE ============================ */
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{ if(b.dataset.v==='add') openForm(null); showView(b.dataset.v); });
+['scopePillHome','scopePillList','scopePillAna'].forEach(id=>{ const el=$(id); if(el) el.onclick=openGroupsSheet; });
 let setupMode='new';
-document.querySelectorAll('#setupMode button').forEach(b=>b.onclick=()=>{ setupMode=b.dataset.mode; document.querySelectorAll('#setupMode button').forEach(x=>x.classList.toggle('on',x===b)); $('setupNew').classList.toggle('hide',setupMode==='join'); $('setupJoin').classList.toggle('hide',setupMode!=='join'); });
+document.querySelectorAll('#setupMode button').forEach(b=>b.onclick=()=>{ setupMode=b.dataset.mode; document.querySelectorAll('#setupMode button').forEach(x=>x.classList.toggle('on',x===b)); $('setupNew').classList.toggle('hide',setupMode==='join'); $('setupJoin').classList.toggle('hide',setupMode!=='join'); if(setupMode==='join') renderSetupRecent(); });
+function renderSetupRecent(){ const list=projects().filter(p=>p.code&&p.code!=='local'); $('setupRecent').innerHTML = list.length ? ('<div class="help" style="margin-bottom:8px">Proyectos recientes en este dispositivo:</div>'+list.map(p=>`<button type="button" class="row" data-code="${esc(p.code)}"><span class="emoji">📁</span><span><span class="t">${esc(p.name)}</span></span><span class="amt small">abrir</span></button>`).join('')) : ''; $('setupRecent').querySelectorAll('[data-code]').forEach(b=>b.onclick=()=>{ localStorage.setItem('encomun_setup_v2','1'); $('setup').classList.add('hide'); $('app').classList.remove('hide'); settingsBind(); switchProject(b.dataset.code); }); }
 $('setupGo').onclick=async()=>{
   $('setupMsg').textContent='';
   if(setupMode==='new'){ const n=$('setupName').value.trim(), my=$('setupMyName').value.trim(); if(!n||!my){ $('setupMsg').textContent='Escribe el nombre del proyecto y el tuyo.'; return; } localStorage.setItem('encomun_setup_v2','1'); $('setup').classList.add('hide'); $('app').classList.remove('hide'); settingsBind(); createProject(n,my); }
