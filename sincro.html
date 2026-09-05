@@ -474,7 +474,7 @@ function renderHome(){
   const list=expensesOf(y); $('monthTitle').textContent=ymLabel(y).replace(/^\w/,c=>c.toUpperCase()); $('monthTotal').textContent=fmt(totalOf(list));
   const mb=state.settings.monthlyBudget; const mbb=$('monthBudgetBar');
   if(mb){ const t=totalOf(list),p=Math.min(100,t/mb*100); mbb.innerHTML=`<div class="bar-row" style="border:0;padding-top:0"><div class="sub"><span>Presupuesto del mes</span><span>${fmt(t)} de ${fmt(mb)}</span></div><div class="track"><div class="fill ${p>=100?'over':p>=85?'near':''}" style="width:${p}%"></div></div></div>`; } else mbb.innerHTML='';
-  const recent=[...state.expenses].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,8);
+  const recent=[...scopedExpenses()].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,8);
   $('recentList').innerHTML=recent.length?recent.map(rowHtml).join(''):`<p class="empty">Todavía no hay ningún apunte. Pulsa el + para añadir el primero.</p>`;
   bindRows($('recentList'));
 }
