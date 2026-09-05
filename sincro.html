@@ -708,7 +708,9 @@ function openGroupsSheet(){
         <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button></div>
       </div>
       <h3 style="margin-top:16px">Meses</h3>`;
-    availableMonths().forEach(mm=>{ html+=monthRowHtml(mm); });
+    const months=availableMonths(); const openMonths=months.filter(m=>!isMonthClosed(m)); const closedMonths=months.filter(m=>isMonthClosed(m));
+    openMonths.forEach(mm=>{ html+=monthRowHtml(mm); });
+    if(closedMonths.length){ html+=`<button type="button" class="btn ghost sm" id="toggleClosedMonths" style="margin-top:8px">🔒 Ver ${closedMonths.length} ${closedMonths.length===1?'mes cerrado':'meses cerrados'}</button><div id="closedMonthsBox" class="hide">`+closedMonths.map(monthRowHtml).join('')+`</div>`; }
     html+=`<h3 style="margin-top:16px">Otras carpetas</h3>`;
     if(!state.groups.length) html+=`<p class="help">Para agrupar algo aparte de los meses, como un viaje, crea una carpeta.</p>`;
     state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=groupRowHtml(g,0); groupChildren(g.id).forEach(c=>{ html+=groupRowHtml(c,1); }); });
@@ -727,6 +729,7 @@ function openGroupsSheet(){
         else if(act==='reopenM'){ reopenMonth(btn.dataset.mm,draw); }
       });
     });
+    const tcm=$('toggleClosedMonths'); if(tcm) tcm.onclick=()=>{ const box=$('closedMonthsBox'); box.classList.toggle('hide'); };
     $('gSheetClose').onclick=closeSheet;
     $('gSheetNew').onclick=()=>{ const n=prompt('Nombre de la carpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:null,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); };
   };
