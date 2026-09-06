@@ -27,7 +27,7 @@
   .logo.big{width:84px;height:84px}
   .card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 2px 10px rgba(17,24,39,.06)}
   .hero-card{background:#0f172a;color:#fff;border-radius:22px;padding:18px 18px 8px;margin-top:4px}
-  .hero-card h2{color:#94a3b8;font-size:.95rem;font-weight:700;margin-bottom:6px}
+  .hero-card h2{color:#94a3b8;font-size:.8rem;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
   .hero-card .person{border-bottom-color:rgba(255,255,255,.12)}
   .hero-card .person .n{color:#fff !important}
   .hero-card .person .st{color:#94a3b8}
@@ -97,14 +97,15 @@
 
   .block{margin-top:26px}
   .block-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
-  .list{display:flex;flex-direction:column}
-  .row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%;color:inherit}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:16px;background:#fff;text-align:left;width:100%;color:inherit}
   .row .emoji{font-size:1.7rem;text-align:center;line-height:1}
   .row .t{font-weight:700} .row .s{font-size:.88rem;color:var(--ink-2)}
   .row .amt{font-weight:700;font-size:1.15rem;white-space:nowrap;text-align:right}
   .row .amt small{display:block;font-size:.78rem;font-weight:400;color:var(--ink-2)}
   .empty{padding:24px 0;color:var(--ink-2)}
   .month-head{display:flex;justify-content:space-between;align-items:baseline;padding:18px 0 6px;border-bottom:2px solid var(--ink);margin-top:10px}
+  .month-body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
   .month-head h3{font-size:1.15rem;text-transform:capitalize}
 
   .field{margin-bottom:18px} .field label{display:block;font-weight:700;margin-bottom:6px}
@@ -112,6 +113,10 @@
   .input{width:100%;min-height:54px;padding:10px 14px;border:2px solid var(--line);border-radius:var(--radius);background:#fff;font-size:1.1rem}
   .input:focus{border-color:var(--ink)} textarea.input{min-height:90px;resize:vertical}
   .amount-input{font-size:2.2rem;font-weight:700;text-align:right;min-height:70px;padding-right:56px}
+  .amount-input-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px;text-align:center;margin-bottom:16px}
+  .amount-input-card .amount-wrap .amount-input{text-align:center;font-size:2.4rem;padding-right:0;min-height:auto}
+  .amount-input-card .amount-wrap .eur{position:static;display:inline;font-size:1.6rem;margin-left:4px}
+  .concept-field{width:100%;border:0;outline:0;text-align:center;color:var(--ink-2);font-size:1rem;margin-top:6px;background:none}
   .amount-wrap{position:relative} .amount-wrap .eur{position:absolute;right:18px;top:50%;transform:translateY(-50%);font-size:1.6rem;font-weight:700;color:var(--ink-2)}
   .seg{display:flex;gap:8px;flex-wrap:wrap}
   .seg button{flex:1;min-height:52px;border:2px solid var(--line);border-radius:var(--radius);background:#fff;color:var(--ink);font-weight:700;font-size:1rem;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
@@ -145,11 +150,15 @@
   .set-block{margin-top:26px;padding-top:18px;border-top:2px solid var(--ink)} .set-block h2{margin-bottom:12px}
   .scope-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:var(--soft);font-weight:700;border:0;font-size:.95rem;margin-bottom:14px;max-width:100%}
   .scope-pill span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .group-row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
-  .group-row .box{width:44px;height:44px;border-radius:12px;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
-  .group-row.closed .box{background:var(--soft)}
-  .group-row .n{font-weight:700} .group-row .s{font-size:.85rem;color:var(--ink-2)}
-  .group-row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tree-row{display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);background:none;border-left:0;border-right:0;border-top:0;width:100%}
+  .tree-row.closed .tree-name{color:var(--ink-2)}
+  .tree-row.child{padding-left:6px;border-bottom:none;padding-top:6px;padding-bottom:6px}
+  .tree-toggle{width:26px;height:26px;flex-shrink:0;border:0;background:none;font-size:1.1rem;font-weight:700;color:var(--ink-2)}
+  .tree-name{flex:1;text-align:left;border:0;background:none;font-size:1.05rem;font-weight:700;color:var(--ink);padding:6px 0}
+  .tree-more{border:0;background:none;font-size:1.3rem;color:var(--ink-2);width:32px;height:32px;flex-shrink:0}
+  .tree-guide{width:26px;flex-shrink:0;text-align:center;color:var(--line);font-family:monospace}
+  .tree-children{padding-left:8px}
+  .tree-add{border:0;background:none;color:var(--blue);font-weight:700;text-align:left;padding:6px 0;flex:1}
   .cat-edit{display:grid;grid-template-columns:56px 1fr 100px 100px 44px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
   .cat-edit .input{min-height:46px;padding:6px 10px;font-size:1rem}
   .cat-edit .x{border:0;background:none;font-size:1.4rem;color:var(--bad);min-height:44px}
@@ -232,10 +241,12 @@
     </section>
 
     <section class="view" id="v-add">
-      <h2 id="formTitle" style="margin-bottom:16px">Nuevo gasto</h2>
-      <div class="field"><div class="seg" id="fType"><button type="button" data-t="gasto" class="on">Gasto</button><button type="button" data-t="transfer">Pago entre nosotros</button></div></div>
-      <div class="field"><label for="fAmount">Importe</label><div class="amount-wrap"><input id="fAmount" class="input amount-input" inputmode="decimal" placeholder="0,00"><span class="eur">€</span></div></div>
-      <div class="field" id="fConceptWrap"><label for="fConcept">Concepto</label><input id="fConcept" class="input" placeholder="p. ej. Mercadona" autocomplete="off" list="conceptList"><datalist id="conceptList"></datalist></div>
+      <h2 id="formTitle" style="margin-bottom:14px">Nuevo gasto</h2>
+      <div class="field" style="margin-bottom:14px"><div class="seg" id="fType"><button type="button" data-t="gasto" class="on">Gasto</button><button type="button" data-t="transfer">Pago entre nosotros</button></div></div>
+      <div class="amount-input-card">
+        <div class="amount-wrap"><input id="fAmount" class="input amount-input" style="border:0;background:none" inputmode="decimal" placeholder="0,00"><span class="eur">€</span></div>
+        <div id="fConceptWrap"><input id="fConcept" class="concept-field" placeholder="Concepto (p. ej. Mercadona)" autocomplete="off" list="conceptList"><datalist id="conceptList"></datalist></div>
+      </div>
       <div class="field"><label id="fPayerLabel">¿Quién ha pagado?</label><div class="chips" id="fPayer"></div></div>
       <div class="field hide" id="fToWrap"><label>¿A quién?</label><div class="chips" id="fTo"></div></div>
       <div class="field" id="fCatWrap"><label>Categoría</label><div class="cats" id="fCat"></div></div>
@@ -246,14 +257,17 @@
         <div class="split-custom hide" id="fSplitCustom"></div>
         <div class="help" id="fSplitHelp"></div>
       </div>
-      <div class="field"><label for="fGroup">Carpeta</label><select id="fGroup" class="input"></select></div>
-      <div class="field"><label for="fDate">Fecha</label><input id="fDate" class="input" type="date"></div>
-      <div class="field"><label for="fAccMonth">Mes que se contabiliza</label><input id="fAccMonth" class="input" type="month"><div class="help">Normalmente coincide con la fecha. Cámbialo solo si, por ejemplo, pagas en septiembre una deuda de agosto.</div></div>
-      <div class="field"><label for="fNote">Nota</label><textarea id="fNote" class="input" placeholder="Opcional"></textarea></div>
-      <div class="field" id="fPhotoWrap">
-        <label>Foto del ticket</label>
-        <div class="photo-box"><img id="fPhotoPrev" class="hide" alt="Ticket"><label class="btn ghost" for="fPhoto">📷 Hacer foto o elegir</label><input id="fPhoto" type="file" accept="image/*" class="sr"><button type="button" class="btn ghost hide" id="fPhotoDel">Quitar foto</button></div>
-        <div class="help">Se guarda reducida (lo justo para leerla).</div>
+      <button type="button" class="btn ghost block" id="fMoreToggle" style="margin-bottom:14px">▸ Más detalles (fecha, carpeta, foto, nota)</button>
+      <div id="fMoreBox" class="hide">
+        <div class="field"><label for="fDate">Fecha</label><input id="fDate" class="input" type="date"></div>
+        <div class="field"><label for="fAccMonth">Mes que se contabiliza</label><input id="fAccMonth" class="input" type="month"><div class="help">Normalmente coincide con la fecha. Cámbialo solo si, por ejemplo, pagas en septiembre una deuda de agosto.</div></div>
+        <div class="field"><label for="fGroup">Carpeta</label><select id="fGroup" class="input"></select></div>
+        <div class="field"><label for="fNote">Nota</label><textarea id="fNote" class="input" placeholder="Opcional"></textarea></div>
+        <div class="field" id="fPhotoWrap">
+          <label>Foto del ticket</label>
+          <div class="photo-box"><img id="fPhotoPrev" class="hide" alt="Ticket"><label class="btn ghost" for="fPhoto">📷 Hacer foto o elegir</label><input id="fPhoto" type="file" accept="image/*" class="sr"><button type="button" class="btn ghost hide" id="fPhotoDel">Quitar foto</button></div>
+          <div class="help">Se guarda reducida (lo justo para leerla).</div>
+        </div>
       </div>
       <div class="form-actions"><button class="btn ghost" id="fCancel">Cancelar</button><button class="btn primary" id="fSave">Guardar</button></div>
       <button class="btn danger block hide" id="fDelete" style="margin-top:14px">Eliminar este apunte</button>
@@ -298,7 +312,7 @@
         <div class="field"><label for="setProjName">Nombre</label><input id="setProjName" class="input" placeholder="p. ej. Casa 2026"></div>
         <p class="small muted">Identificador interno: <code id="setCode"></code></p>
         <div class="form-actions"><button class="btn ghost" id="forcePush">Volver a subir todo</button></div>
-        <div class="form-actions" style="margin-top:12px"><button class="btn ghost block" id="openGroupsFromSettings">Gestionar carpetas del proyecto</button></div>
+        <div class="form-actions" style="margin-top:12px"><button class="btn ghost block" id="openGroupsFromSettings">Ver proyectos y meses</button></div>
         <div class="field" style="margin-top:18px" id="myCodeWrap"><label>Tu código personal</label><div class="inline"><code id="myCodeVal" style="flex:1">—</code><button class="btn ghost sm" id="myCodeShare">Enviar</button></div><div class="help">Guárdalo. Con él recuperas el acceso a este proyecto desde cualquier móvil, aunque borres los datos de este.</div></div>
         <h3 style="margin-top:22px">Mis proyectos</h3>
         <div class="list" id="projList"></div>
@@ -401,13 +415,13 @@ function closeMonthFlow(mm,after){
   commit(); if(after) after();
 }
 function reopenMonth(mm,after){ if(state.closedMonths) delete state.closedMonths[mm]; commit(); if(after) after(); }
-function groupOptionsHtml(selected){ let html=`<option value="">General (sin carpeta)</option>`; state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=`<option value="${g.id}" ${selected===g.id?'selected':''}>${esc(g.name)}${g.closed?' 🔒':''}</option>`; groupChildren(g.id).forEach(c=>{ html+=`<option value="${c.id}" ${selected===c.id?'selected':''}>\u00A0\u00A0↳ ${esc(c.name)}${c.closed?' 🔒':''}</option>`; }); }); return html; }
+function groupOptionsHtml(selected,mm){ let html=`<option value="">General (sin carpeta)</option>`; groupsUnderMonth(mm).forEach(g=>{ html+=`<option value="${g.id}" ${selected===g.id?'selected':''}>${esc(g.name)}${g.closed?' 🔒':''}</option>`; }); return html; }
 function computeBalancesFor(list){ const b={}; state.members.forEach(m=>b[m.id]=0); for(const e of list){ if(e.type==='transfer'){ b[e.payerId]=(b[e.payerId]||0)+e.amount; b[e.toId]=(b[e.toId]||0)-e.amount; } else { b[e.payerId]=(b[e.payerId]||0)+e.amount; for(const m of state.members) b[m.id]-=shareOf(e,m.id); } } return b; }
 function slug(t){ return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 function genCode(name){ return (slug(name)||'x')+'-'+Math.random().toString(36).slice(2,6); }
 
 function loadLocal(){ state=freshState(); try{ const s=JSON.parse(localStorage.getItem(stateKey())); if(s&&s.members) state=migrate(s); }catch(e){} me=localStorage.getItem(meKey())||null; if(!state.members.find(m=>m.id===me)) me=state.members[0]?state.members[0].id:null; const storedScope=localStorage.getItem(scopeKey()); currentScope=(storedScope===null)?('m:'+ym(new Date())):(storedScope||null); if(currentScope&&currentScope.startsWith('g:')&&!groupById(currentScope.slice(2))) currentScope='m:'+ym(new Date()); }
-function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=(s.expenses||[]).map(e=>Object.assign({groupId:null,accountMonth:null},e)); s.closedMonths=s.closedMonths||{}; s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.groups=s.groups||[]; s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
+function migrate(s){ s.projectName=s.projectName||'Sincro'; s.settings=Object.assign({monthlyBudget:null,avgMonths:3,avgPct:20,bigOne:null},s.settings||{}); s.expenses=(s.expenses||[]).map(e=>Object.assign({groupId:null,accountMonth:null},e)); s.closedMonths=s.closedMonths||{}; s.categories=s.categories||JSON.parse(JSON.stringify(DEFAULT_CATS)); s.groups=(s.groups||[]).map(g=>(g.parentId&&g.parentId.startsWith('m:'))?g:Object.assign({},g,{parentId:'m:'+ym(new Date())})); s.members=(s.members||[]).map((m,i)=>Object.assign({color:COLORS[i%COLORS.length],avatar:{type:'emoji',value:AVATARS[i%AVATARS.length]},inviteCode:null},m)); return s; }
 function saveLocal(){ localStorage.setItem(stateKey(),JSON.stringify(state)); if(me) localStorage.setItem(meKey(),me); rememberProject(); }
 function projects(){ try{ return JSON.parse(localStorage.getItem(LS_PROJECTS))||[]; }catch(e){ return []; } }
 function rememberProject(){ const code=syncCode||'local'; const list=projects().filter(p=>p.code!==code); list.unshift({code,name:state.projectName}); localStorage.setItem(LS_PROJECTS,JSON.stringify(list.slice(0,20))); }
@@ -531,10 +545,13 @@ function openForm(e,preset){
   $('fPhotoPrev').classList.add('hide'); $('fPhotoDel').classList.add('hide'); $('fPhoto').value='';
   if(form.photoId) getPhoto(form.photoId).then(d=>{ if(d&&form&&form.photoId){ $('fPhotoPrev').src=d; $('fPhotoPrev').classList.remove('hide'); $('fPhotoDel').classList.remove('hide'); } });
   $('conceptList').innerHTML=[...new Set(state.expenses.map(x=>x.concept).filter(Boolean))].slice(0,60).map(c=>`<option value="${esc(c)}">`).join('');
-  $('fGroup').innerHTML=groupOptionsHtml(form.groupId||'');
+  $('fGroup').innerHTML=groupOptionsHtml(form.groupId||'',$('fAccMonth').value);
   $('fSplitCustom').innerHTML=''; syncFormUi(true);
-  $('fDate').onchange=()=>{ if(!accMonthTouched) $('fAccMonth').value=ym($('fDate').value||todayStr()); };
-  $('fAccMonth').onchange=()=>{ accMonthTouched=true; };
+  $('fDate').onchange=()=>{ if(!accMonthTouched) $('fAccMonth').value=ym($('fDate').value||todayStr()); $('fGroup').innerHTML=groupOptionsHtml($('fGroup').value,$('fAccMonth').value); };
+  $('fAccMonth').onchange=()=>{ accMonthTouched=true; $('fGroup').innerHTML=groupOptionsHtml($('fGroup').value,$('fAccMonth').value); };
+  const hasExtras = e && (form.note || form.photoId || form.groupId || form.accountMonth!==ym(form.date));
+  $('fMoreBox').classList.toggle('hide', !hasExtras);
+  $('fMoreToggle').textContent=(hasExtras?'▾':'▸')+' Más detalles (fecha, carpeta, foto, nota)';
 }
 function syncFormUi(reset){
   const tr=form.type==='transfer';
@@ -569,6 +586,7 @@ function updSplitHelp(){
 document.querySelectorAll('#fType button').forEach(b=>b.onclick=()=>{form.type=b.dataset.t;syncFormUi();});
 document.querySelectorAll('#fSplit button').forEach(b=>b.onclick=()=>{ form.split=Object.assign({},form.split,{mode:b.dataset.s}); if(b.dataset.s==='custom'&&!form.split.shares){ const a=parseNum($('fAmount').value)||0; const n=state.members.length; form.split.shares={}; state.members.forEach(m=>form.split.shares[m.id]=Math.round(a/n*100)/100); } syncFormUi(true); });
 $('fAmount').oninput=()=>updSplitHelp();
+$('fMoreToggle').onclick=()=>{ const box=$('fMoreBox'); const nowHidden=box.classList.toggle('hide'); $('fMoreToggle').textContent=(nowHidden?'▸':'▾')+' Más detalles (fecha, carpeta, foto, nota)'; };
 $('fCancel').onclick=()=>{ form=null; showView('inicio'); };
 $('fDelete').onclick=()=>{ if(!form.id) return; if(!confirm('¿Eliminar este apunte? No se puede deshacer.')) return; const e=state.expenses.find(x=>x.id===form.id); if(e&&e.photoId) deletePhoto(e.photoId); state.expenses=state.expenses.filter(x=>x.id!==form.id); form=null; commit(); showView('inicio'); toast('Apunte eliminado'); };
 $('fPhoto').onchange=async ev=>{ const f=ev.target.files[0]; if(!f) return; try{ const d=await compressImage(f,1000,420000); form._photoData=d; form._photoRemoved=false; $('fPhotoPrev').src=d; $('fPhotoPrev').classList.remove('hide'); $('fPhotoDel').classList.remove('hide'); }catch(e){ toast('No se ha podido leer la foto'); } };
@@ -678,66 +696,65 @@ function openMemberSheet(m){
   draw(); $('sheetBg').classList.add('open');
 }
 
-function groupRowHtml(g,level){
-  const sc='g:'+g.id;
-  return `<div class="group-row ${g.closed?'closed':''}" data-scope="${sc}" style="padding-left:${level*22}px">
-    <div class="box">${g.closed?'🔒':'📁'}</div>
-    <div><div class="n">${esc(g.name)}${currentScope===sc?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${g.closed?'cerrada':'abierta'}</div></div>
-    <div class="acts">
-      <button class="btn ghost sm" data-act="open">Ver</button>
-      ${level===0&&!g.closed?'<button class="btn ghost sm" data-act="sub">+Sub</button>':''}
-      <button class="btn ghost sm" data-act="${g.closed?'reopen':'close'}">${g.closed?'Reabrir':'Cerrar'}</button>
-    </div>
-  </div>`;
-}
-function monthRowHtml(mm){
+function groupsUnderMonth(mm){ return state.groups.filter(g=>g.parentId==='m:'+mm); }
+let treeExpanded={};
+function treeMonthHtml(mm){
   const closed=isMonthClosed(mm); const sc='m:'+mm; const label=ymLabel(mm).replace(/^\w/,c=>c.toUpperCase());
-  return `<div class="group-row ${closed?'closed':''}" data-scope="${sc}">
-    <div class="box">${closed?'🔒':'🗓️'}</div>
-    <div><div class="n">${label}${currentScope===sc?' <span class="muted small">(viendo)</span>':''}</div><div class="s">${closed?'cerrado':'abierto'}</div></div>
-    <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button><button class="btn ghost sm" data-act="${closed?'reopenM':'closeM'}" data-mm="${mm}">${closed?'Reabrir':'Cerrar'}</button></div>
+  const kids=groupsUnderMonth(mm); const exp=!!treeExpanded[mm];
+  let html=`<div class="tree-row ${closed?'closed':''}">
+    <button class="tree-toggle" data-toggle="${mm}">${kids.length?(exp?'▾':'▸'):'·'}</button>
+    <button class="tree-name" data-scope="${sc}">${closed?'🔒 ':'🗓️ '}${label}${currentScope===sc?' <span class="muted small">(aquí)</span>':''}</button>
+    <button class="tree-more" data-more="${sc}">⋯</button>
   </div>`;
+  if(exp){
+    html+=`<div class="tree-children">`;
+    kids.forEach(g=>{
+      const gsc='g:'+g.id;
+      html+=`<div class="tree-row child">
+        <span class="tree-guide">└─</span>
+        <button class="tree-name" data-scope="${gsc}">${g.closed?'🔒 ':'📌 '}${esc(g.name)}${currentScope===gsc?' <span class="muted small">(aquí)</span>':''}</button>
+        <button class="tree-more" data-more="${gsc}">⋯</button>
+      </div>`;
+    });
+    html+=`<div class="tree-row child"><span class="tree-guide">└─</span><button class="tree-add" data-addfolder="${mm}">+ Añadir carpeta (p. ej. un viaje)</button></div></div>`;
+  }
+  return html;
 }
 function openGroupsSheet(){
   const sh=$('sheet');
   const draw=()=>{
-    let html=`<h2>Ver por</h2>
-      <div class="group-row" data-scope="">
-        <div class="box">🗂️</div>
-        <div><div class="n">Todo el proyecto${!currentScope?' <span class="muted small">(viendo)</span>':''}</div><div class="s">Sin filtrar</div></div>
-        <div class="acts"><button class="btn ghost sm" data-act="open">Ver</button></div>
-      </div>
-      <h3 style="margin-top:16px">Meses</h3>`;
     const months=availableMonths(); const openMonths=months.filter(m=>!isMonthClosed(m)); const closedMonths=months.filter(m=>isMonthClosed(m));
-    openMonths.forEach(mm=>{ html+=monthRowHtml(mm); });
-    if(closedMonths.length){ html+=`<button type="button" class="btn ghost sm" id="toggleClosedMonths" style="margin-top:8px">🔒 Ver ${closedMonths.length} ${closedMonths.length===1?'mes cerrado':'meses cerrados'}</button><div id="closedMonthsBox" class="hide">`+closedMonths.map(monthRowHtml).join('')+`</div>`; }
-    html+=`<h3 style="margin-top:16px">Otras carpetas</h3>`;
-    if(!state.groups.length) html+=`<p class="help">Para agrupar algo aparte de los meses, como un viaje, crea una carpeta.</p>`;
-    state.groups.filter(g=>!g.parentId).forEach(g=>{ html+=groupRowHtml(g,0); groupChildren(g.id).forEach(c=>{ html+=groupRowHtml(c,1); }); });
-    html+=`<div class="form-actions" style="margin-top:16px"><button class="btn ghost" id="gSheetClose">Cerrar</button><button class="btn primary" id="gSheetNew">+ Nueva carpeta</button></div>`;
+    let html=`<h2>Proyectos</h2>
+      <button class="tree-row" id="allProjectsRow" style="width:100%;text-align:left">
+        <span class="tree-toggle">·</span><span class="tree-name" style="flex:1">🗂️ Todo el proyecto${!currentScope?' <span class="muted small">(aquí)</span>':''}</span>
+      </button>`;
+    openMonths.forEach(mm=>{ html+=treeMonthHtml(mm); });
+    if(closedMonths.length){ html+=`<button type="button" class="btn ghost sm" id="toggleClosedMonths" style="margin-top:10px">🔒 Ver ${closedMonths.length} ${closedMonths.length===1?'mes cerrado':'meses cerrados'}</button><div id="closedMonthsBox" class="hide">`+closedMonths.map(treeMonthHtml).join('')+`</div>`; }
+    html+=`<div class="form-actions" style="margin-top:18px"><button class="btn ghost block" id="gSheetClose">Cerrar</button></div>`;
     sh.innerHTML=html;
-    sh.querySelectorAll('.group-row').forEach(row=>{
-      const scope=row.dataset.scope; const gid=scope&&scope.startsWith('g:')?scope.slice(2):null; const g=gid?groupById(gid):null;
-      row.querySelectorAll('button').forEach(btn=>btn.onclick=(ev)=>{
-        ev.stopPropagation();
-        const act=btn.dataset.act;
-        if(act==='open'){ setCurrentScope(scope||null); closeSheet(); }
-        else if(act==='sub'){ const n=prompt('Nombre de la subcarpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:g.id,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); }
-        else if(act==='close'){ closeGroupFlow(g,draw); }
-        else if(act==='reopen'){ g.closed=false; g.closedAt=null; commit(); draw(); }
-        else if(act==='closeM'){ closeMonthFlow(btn.dataset.mm,draw); }
-        else if(act==='reopenM'){ reopenMonth(btn.dataset.mm,draw); }
-      });
-    });
-    const tcm=$('toggleClosedMonths'); if(tcm) tcm.onclick=()=>{ const box=$('closedMonthsBox'); box.classList.toggle('hide'); };
+    $('allProjectsRow').onclick=()=>{ setCurrentScope(null); closeSheet(); };
+    sh.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const mm=b.dataset.toggle; if(!groupsUnderMonth(mm).length) return; treeExpanded[mm]=!treeExpanded[mm]; draw(); });
+    sh.querySelectorAll('[data-scope]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); setCurrentScope(b.dataset.scope||null); closeSheet(); });
+    sh.querySelectorAll('[data-addfolder]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const mm=b.dataset.addfolder; const n=prompt('Nombre de la carpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; state.groups.push({id:'g'+uid(),name:n.trim(),parentId:'m:'+mm,closed:false,closedAt:null,closedSummary:null}); treeExpanded[mm]=true; commit(); draw(); });
+    sh.querySelectorAll('[data-more]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); openScopeActions(b.dataset.more,draw); });
+    const tcm=$('toggleClosedMonths'); if(tcm) tcm.onclick=()=>{ $('closedMonthsBox').classList.toggle('hide'); };
     $('gSheetClose').onclick=closeSheet;
-    $('gSheetNew').onclick=()=>{ const n=prompt('Nombre de la carpeta (por ejemplo, un viaje):',''); if(!n||!n.trim()) return; const ng={id:'g'+uid(),name:n.trim(),parentId:null,closed:false,closedAt:null,closedSummary:null}; state.groups.push(ng); commit(); draw(); };
   };
   draw(); $('sheetBg').classList.add('open');
 }
+function openScopeActions(scope,after){
+  if(scope.startsWith('m:')){
+    const mm=scope.slice(2); const closed=isMonthClosed(mm); const label=ymLabel(mm).replace(/^\w/,c=>c.toUpperCase());
+    const opt=prompt((closed?'Reabrir':'Cerrar')+' '+label+'. Escribe "si" para confirmar:'); if(!opt||opt.trim().toLowerCase()!=='si') return;
+    if(closed) reopenMonth(mm,after); else closeMonthFlow(mm,after);
+  } else if(scope.startsWith('g:')){
+    const g=groupById(scope.slice(2)); if(!g) return;
+    if(g.closed){ if(confirm('¿Reabrir '+g.name+'?')){ g.closed=false; g.closedAt=null; commit(); if(after) after(); } }
+    else closeGroupFlow(g,after);
+  }
+}
 function closeGroupFlow(g,after){
-  const ids=groupDescendantIds(g.id);
-  const list=state.expenses.filter(e=>e.groupId&&ids.includes(e.groupId));
+  const list=state.expenses.filter(e=>e.groupId===g.id);
   const b=computeBalancesFor(list); const st=settlements(b);
   const msg = st.length ? ('Antes de cerrar, esto queda pendiente:\n\n'+st.map(d=>`${mname(d.from)} debe ${fmt(d.amount)} a ${mname(d.to)}`).join('\n')+'\n\n¿Cerrar de todas formas? Podrás reabrirla si hace falta.') : '¿Cerrar esta carpeta? No se podrán añadir más gastos aquí hasta que la reabras.';
   if(!confirm(msg)) return;
