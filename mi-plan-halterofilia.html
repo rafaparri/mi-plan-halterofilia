@@ -1648,6 +1648,7 @@ let state = {
   backupMessage: null,
   pendingImportFile: null,
   showBackupText: false,
+  showVoicePicker: false,
   backupText: '',
   rmForm: null,            // { code, value, date } while the "+ Registrar RM" mini form is open
   metricForm: null,        // { date, peso, sistolica, diastolica } while the "+ Registrar medida" mini form is open
@@ -1730,6 +1731,7 @@ async function initApp(){
   state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
 
   try{ const raw = await storageGet(LAST_BACKUP_KEY); lastBackupTs = raw ? Number(raw) : null; }catch(e){ lastBackupTs = null; }
+  try{ preferredVoiceURI = await storageGet(PREFERRED_VOICE_KEY); }catch(e){ preferredVoiceURI = null; }
 
   render();
   prefetchAllUserData();
@@ -2019,6 +2021,7 @@ function render(){
     root.appendChild(renderProfileScreen());
     if (state.showUsers) root.appendChild(renderUsersSheet());
     if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+  if (state.showVoicePicker) root.appendChild(renderVoicePickerOverlay());
     if (state.showSync) root.appendChild(renderSyncOverlay());
     return;
   }
@@ -2027,6 +2030,7 @@ function render(){
     root.appendChild(renderUpload());
     if (state.showUsers) root.appendChild(renderUsersSheet());
     if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+  if (state.showVoicePicker) root.appendChild(renderVoicePickerOverlay());
     if (state.showSync) root.appendChild(renderSyncOverlay());
     return;
   }
@@ -2052,6 +2056,7 @@ function render(){
   if (state.showMenu) root.appendChild(renderMenuSheet(activePlan));
   if (state.showSync) root.appendChild(renderSyncOverlay());
   if (state.showBackupText) root.appendChild(renderBackupTextOverlay());
+  if (state.showVoicePicker) root.appendChild(renderVoicePickerOverlay());
 }
 
 function el(tag, cls, html){
@@ -2629,6 +2634,31 @@ function deleteSetFromEntry(plan, day, exIdx, setIdx){
 
 /* ---- Flashcard viewer ---- */
 /* ---- Lectura en voz alta (voz del propio dispositivo, sin conexión) ---- */
+const PREFERRED_VOICE_KEY = 'preferred_voice_uri';
+let preferredVoiceURI = null;
+let cachedVoices = [];
+
+function refreshVoicesCache(){
+  try{ cachedVoices = window.speechSynthesis.getVoices() || []; }catch(e){}
+}
+if (typeof window !== 'undefined' && 'speechSynthesis' in window){
+  refreshVoicesCache();
+  window.speechSynthesis.onvoiceschanged = refreshVoicesCache;
+}
+
+function pickVoiceForUtterance(utt){
+  refreshVoicesCache();
+  let voice = null;
+  if (preferredVoiceURI) voice = cachedVoices.find(v=>v.voiceURI===preferredVoiceURI);
+  if (!voice){
+    const esVoices = cachedVoices.filter(v=>v.lang && v.lang.toLowerCase().startsWith('es'));
+    voice = esVoices.find(v=>/enhanced|premium|neural/i.test(v.name))
+      || esVoices.find(v=>v.localService===false)
+      || esVoices[0] || null;
+  }
+  if (voice) utt.voice = voice;
+}
+
 function buildSpeechText(entry, s){
   const name = entry.name || (DICT[entry.code] || ('Código ' + entry.code));
   const kgText = (s.kg!==null && s.kg!==undefined) ? (s.kg + ' kilos') : (s.kgRaw ? ('peso ' + s.kgRaw) : 'peso sin especificar');
@@ -2644,6 +2674,7 @@ function speakText(text){
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang = 'es-ES';
     utt.rate = 0.95;
+    pickVoiceForUtterance(utt);
     window.speechSynthesis.speak(utt);
   }catch(e){}
 }
@@ -3864,6 +3895,60 @@ function importBackupFile(file){
 }
 
 /* ---- Ver/copiar el JSON de la copia a mano (si la descarga falla) ---- */
+/* ---- Elegir voz de lectura (voces del propio dispositivo) ---- */
+function renderVoicePickerOverlay(){
+  const overlay = el('div','overlay');
+  const close = ()=>{ stopSpeaking(); state.showVoicePicker = false; render(); };
+  overlay.onclick = (e)=>{ if (e.target===overlay) close(); };
+  const sheet = el('div','sheet');
+  sheet.appendChild(el('h3','Elegir voz de lectura'));
+
+  const hint = el('div','ex-hint','Prueba las voces en español de tu dispositivo con el botón ▶ y elige la que mejor suene. Se guarda solo en este dispositivo, no se sincroniza.');
+  hint.style.cssText = 'margin-bottom:14px;';
+  sheet.appendChild(hint);
+
+  refreshVoicesCache();
+  const voices = cachedVoices.filter(v=>v.lang && v.lang.toLowerCase().startsWith('es'));
+
+  if (!voices.length){
+    const empty = el('div','ex-hint','Tu dispositivo todavía no ha informado de sus voces disponibles. Toca "🔊 Escuchar" en una tarjeta de peso primero y vuelve a abrir esto.');
+    sheet.appendChild(empty);
+  }
+
+  voices.forEach(v=>{
+    const isSelected = preferredVoiceURI ? (preferredVoiceURI === v.voiceURI) : false;
+    const row = el('div','hist-item');
+    const l = el('div'); l.style.flex = '1';
+    l.appendChild(el('div','hi-title', v.name + (isSelected ? ' · seleccionada' : '')));
+    l.appendChild(el('div','hi-sub', v.lang));
+    l.onclick = ()=>{
+      preferredVoiceURI = v.voiceURI;
+      storageSet(PREFERRED_VOICE_KEY, v.voiceURI);
+      render();
+    };
+    row.appendChild(l);
+    const testBtn = el('button', null, '▶');
+    testBtn.style.cssText = 'background:none;border:1px solid var(--surface-3);color:var(--muted);width:46px;height:46px;border-radius:8px;cursor:pointer;font-size:18px;flex-shrink:0;';
+    testBtn.onclick = (e)=>{
+      e.stopPropagation();
+      try{
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance('Sentadilla delante. Noventa kilos. Tres series de cuatro repeticiones.');
+        utt.lang = v.lang; utt.voice = v; utt.rate = 0.95;
+        window.speechSynthesis.speak(utt);
+      }catch(err){}
+    };
+    row.appendChild(testBtn);
+    sheet.appendChild(row);
+  });
+
+  const closeBtn = el('button','sheet-close','Cerrar');
+  closeBtn.onclick = close;
+  sheet.appendChild(closeBtn);
+  overlay.appendChild(sheet);
+  return overlay;
+}
+
 function renderBackupTextOverlay(){
   const overlay = el('div','overlay');
   const close = ()=>{ state.showBackupText = false; render(); };
@@ -4019,6 +4104,7 @@ function renderMenuSheet(plan){
   sheet.appendChild(menuItem('👤', 'Deportista: ' + getActiveUser().name, ()=>{ state.showUsers=true; state.showMenu=false; render(); }));
   sheet.appendChild(menuItem(syncStatus==='on' ? '🔄' : '📴', syncStatus==='on' ? 'Sincronización: activa' : 'Sincronizar entre dispositivos', ()=>{ state.showSync=true; state.showMenu=false; render(); }));
   sheet.appendChild(menuItem('🧾', 'Informe semanal', ()=>{ state.showMenu=false; generateWeekReport(plan); }));
+  sheet.appendChild(menuItem('🔊', 'Elegir voz de lectura', ()=>{ state.showMenu=false; state.showVoicePicker=true; render(); }));
   sheet.appendChild(menuItem('💾', 'Exportar copia de seguridad', async ()=>{
     state.showMenu = false;
     render();
