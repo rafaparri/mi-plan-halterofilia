@@ -1373,11 +1373,11 @@ let userDataCache = {}; // { userId: {plans,checks,notes} } — caché en memori
 async function loadUserDataAsync(userId){
   try{
     const raw = await storageGet(userDataKey(userId));
-    const data = raw ? (function(){ const p = JSON.parse(raw); return { plans:p.plans||[], checks:p.checks||{}, notes:p.notes||{} }; })() : { plans:[], checks:{}, notes:{} };
+    const data = raw ? (function(){ const p = JSON.parse(raw); return { plans:p.plans||[], checks:p.checks||{}, notes:p.notes||{}, seriesProgress:p.seriesProgress||{} }; })() : { plans:[], checks:{}, notes:{}, seriesProgress:{} };
     userDataCache[userId] = data;
     return data;
   }catch(e){
-    const empty = { plans:[], checks:{}, notes:{} };
+    const empty = { plans:[], checks:{}, notes:{}, seriesProgress:{} };
     userDataCache[userId] = empty;
     return empty;
   }
@@ -1395,7 +1395,7 @@ function deleteUserDataAsync(userId){
   return storageDelete(userDataKey(userId));
 }
 function persistUserData(){
-  saveUserDataAsync(activeUserId, { plans: state.plans, checks: state.checks, notes: state.notes });
+  saveUserDataAsync(activeUserId, { plans: state.plans, checks: state.checks, notes: state.notes, seriesProgress: state.seriesProgress });
 }
 function prefetchAllUserData(){
   users.forEach(u=>{
@@ -1499,11 +1499,11 @@ async function pushUserNow(userId){
 
 function applyRemoteUserDoc(uid, data){
   applyingRemoteSync = true;
-  const d = { plans: (data&&data.plans)||[], checks: (data&&data.checks)||{}, notes: (data&&data.notes)||{} };
+  const d = { plans: (data&&data.plans)||[], checks: (data&&data.checks)||{}, notes: (data&&data.notes)||{}, seriesProgress: (data&&data.seriesProgress)||{} };
   userDataCache[uid] = d;
   saveUserDataAsync(uid, d);
   if (uid === activeUserId){
-    state.plans = d.plans; state.checks = d.checks; state.notes = d.notes;
+    state.plans = d.plans; state.checks = d.checks; state.notes = d.notes; state.seriesProgress = d.seriesProgress;
     const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
     state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
     state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
@@ -1602,6 +1602,7 @@ async function switchActiveUser(id){
   state.plans = data.plans;
   state.checks = data.checks;
   state.notes = data.notes;
+  state.seriesProgress = data.seriesProgress || {};
   const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
   state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
   state.activeDay = null;
@@ -1618,6 +1619,7 @@ let state = {
   plans: [],
   exerciseVideos: {}, // { 'día|idxEjercicio': [{id,name,url,analysis}] } — solo en memoria, no se guarda
   checks: {},
+  seriesProgress: {}, // { checkKey: [bool, bool, ...] } — progreso de series sueltas dentro de un mismo peso
   notes: {},
   activePlanId: null,
   activeDay: null,
@@ -1722,6 +1724,7 @@ async function initApp(){
   state.plans = data.plans;
   state.checks = data.checks;
   state.notes = data.notes;
+  state.seriesProgress = data.seriesProgress || {};
   const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
   state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
   state.reviewDismissed = sorted.length ? !sorted[sorted.length-1].needsReview : false;
@@ -1755,26 +1758,35 @@ function checkKey(plan, day, exIdx, setIdx){
   return plan.id + '|' + day + '|' + exIdx + '|' + setIdx;
 }
 
-// Borra un ejercicio del día y reindexa las marcas (bien/mal) del resto de
-// ejercicios de ese día, para que no se desincronicen con su nueva posición.
-function deleteExerciseEntry(plan, day, idx){
-  plan.days[day].splice(idx, 1);
+// Reindexa un almacén con claves "planId|día|exIdx|setIdx..." tras borrar el
+// ejercicio en la posición idx de ese día: descarta sus claves y desplaza
+// hacia atrás el exIdx de los ejercicios posteriores.
+function reindexStoreAfterExerciseDelete(store, plan, day, idx){
   const prefix = plan.id + '|' + day + '|';
-  const newChecks = {};
-  Object.keys(state.checks).forEach(k=>{
+  const out = {};
+  Object.keys(store).forEach(k=>{
     if (k.startsWith(prefix)){
       const rest = k.slice(prefix.length);
       const sep = rest.indexOf('|');
       const exIdx = parseInt(rest.slice(0,sep),10);
       const setPart = rest.slice(sep+1);
-      if (exIdx === idx) return; // se descartan las marcas del ejercicio borrado
+      if (exIdx === idx) return; // se descarta lo asociado al ejercicio borrado
       const newExIdx = exIdx > idx ? exIdx-1 : exIdx;
-      newChecks[plan.id+'|'+day+'|'+newExIdx+'|'+setPart] = state.checks[k];
+      out[plan.id+'|'+day+'|'+newExIdx+'|'+setPart] = store[k];
     } else {
-      newChecks[k] = state.checks[k];
+      out[k] = store[k];
     }
   });
-  state.checks = newChecks;
+  return out;
+}
+
+// Borra un ejercicio del día y reindexa las marcas (bien/mal) y el progreso
+// de series del resto de ejercicios de ese día, para que no se desincronicen
+// con su nueva posición.
+function deleteExerciseEntry(plan, day, idx){
+  plan.days[day].splice(idx, 1);
+  state.checks = reindexStoreAfterExerciseDelete(state.checks, plan, day, idx);
+  state.seriesProgress = reindexStoreAfterExerciseDelete(state.seriesProgress, plan, day, idx);
   persistUserData();
 }
 
@@ -2591,28 +2603,56 @@ function renderExerciseCard(plan, day, entry, idx){
 }
 
 // Borra un peso (serie) concreto de un ejercicio y reindexa sus marcas.
-function deleteSetFromEntry(plan, day, exIdx, setIdx){
-  const entry = plan.days[day][exIdx];
-  entry.sets.splice(setIdx, 1);
+function reindexStoreAfterSetDelete(store, plan, day, exIdx, setIdx){
   const prefix = plan.id + '|' + day + '|' + exIdx + '|';
-  const newChecks = {};
-  Object.keys(state.checks).forEach(k=>{
+  const out = {};
+  Object.keys(store).forEach(k=>{
     if (k.startsWith(prefix)){
       const oldSetIdx = parseInt(k.slice(prefix.length), 10);
       if (oldSetIdx === setIdx) return;
       const newSetIdx = oldSetIdx > setIdx ? oldSetIdx-1 : oldSetIdx;
-      newChecks[prefix + newSetIdx] = state.checks[k];
+      out[prefix + newSetIdx] = store[k];
     } else {
-      newChecks[k] = state.checks[k];
+      out[k] = store[k];
     }
   });
-  state.checks = newChecks;
+  return out;
+}
+
+function deleteSetFromEntry(plan, day, exIdx, setIdx){
+  const entry = plan.days[day][exIdx];
+  entry.sets.splice(setIdx, 1);
+  state.checks = reindexStoreAfterSetDelete(state.checks, plan, day, exIdx, setIdx);
+  state.seriesProgress = reindexStoreAfterSetDelete(state.seriesProgress, plan, day, exIdx, setIdx);
   persistUserData();
 }
 
 /* ---- Flashcard viewer ---- */
+/* ---- Lectura en voz alta (voz del propio dispositivo, sin conexión) ---- */
+function buildSpeechText(entry, s){
+  const name = entry.name || (DICT[entry.code] || ('Código ' + entry.code));
+  const kgText = (s.kg!==null && s.kg!==undefined) ? (s.kg + ' kilos') : (s.kgRaw ? ('peso ' + s.kgRaw) : 'peso sin especificar');
+  const repsText = s.repsParts ? s.repsParts.join(' más ') : (s.reps!=null ? String(s.reps) : (s.repsRaw || 'sin especificar'));
+  let text = name + '. ' + kgText + '. ';
+  text += s.series ? (s.series + (s.series===1?' serie':' series') + ' de ' + repsText + ' repeticiones.') : (repsText + ' repeticiones.');
+  return text;
+}
+function speakText(text){
+  try{
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'es-ES';
+    utt.rate = 0.95;
+    window.speechSynthesis.speak(utt);
+  }catch(e){}
+}
+function stopSpeaking(){
+  try{ if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+}
+
 function openFlashcards(day, exIdx, cardIdx){
-  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false };
+  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false, lastSpokenIdx:null };
   render();
 }
 
@@ -2627,7 +2667,7 @@ function renderFlashcardOverlay(plan){
 
   const overlay = el('div','overlay fc-overlay');
   overlay.style.cssText = 'align-items:center;';
-  const closeOnBg = (e)=>{ if (e.target===overlay){ state.flashcard=null; state.newWeightDraft=null; render(); } };
+  const closeOnBg = (e)=>{ if (e.target===overlay){ stopSpeaking(); state.flashcard=null; state.newWeightDraft=null; render(); } };
   overlay.onclick = closeOnBg;
 
   const wrap = el('div','fc-wrap');
@@ -2638,7 +2678,7 @@ function renderFlashcardOverlay(plan){
   titleWrap.appendChild(el('div','fc-progress', (cardIdx+1)+' / '+totalCards));
   topBar.appendChild(titleWrap);
   const closeBtn = el('button','fc-close','✕');
-  closeBtn.onclick = ()=>{ state.flashcard=null; state.newWeightDraft=null; render(); };
+  closeBtn.onclick = ()=>{ stopSpeaking(); state.flashcard=null; state.newWeightDraft=null; render(); };
   topBar.appendChild(closeBtn);
   wrap.appendChild(topBar);
 
@@ -2746,6 +2786,11 @@ function renderFlashcardOverlay(plan){
       return overlay;
     }
 
+    if (state.flashcard.lastSpokenIdx !== cardIdx){
+      state.flashcard.lastSpokenIdx = cardIdx;
+      speakText(buildSpeechText(entry, s));
+    }
+
     card.appendChild(el('div','fc-kg', kgDisplayText(s)));
     if (s.optional){
       const optBadge = el('div', null, '🔓 Serie opcional (según cómo vayas)');
@@ -2779,6 +2824,31 @@ function renderFlashcardOverlay(plan){
       card.appendChild(editedBadge);
     }
 
+    if (s.series && s.series > 1){
+      const seriesLbl = el('div', null, 'MARCA CADA SERIE');
+      seriesLbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:13px;color:var(--muted-2);letter-spacing:.04em;text-align:center;margin-top:-6px;';
+      card.appendChild(seriesLbl);
+      const seriesRow = el('div');
+      seriesRow.style.cssText = 'display:flex;gap:8px;width:100%;justify-content:center;flex-wrap:wrap;';
+      const progress = state.seriesProgress[key] || [];
+      for (let i=0;i<s.series;i++){
+        const done = !!progress[i];
+        const sBtn = el('button', null, String(i+1));
+        sBtn.style.cssText = 'width:50px;height:50px;border-radius:12px;font-family:Oswald,sans-serif;font-weight:700;font-size:22px;cursor:pointer;border:2px solid ' +
+          (done ? 'var(--ok)' : 'var(--surface-3)') + ';background:' + (done ? 'var(--ok)' : 'var(--surface-2)') + ';color:' + (done ? '#fff' : 'var(--chalk)') + ';';
+        sBtn.onclick = ()=>{
+          const arr = state.seriesProgress[key] ? state.seriesProgress[key].slice() : [];
+          arr[i] = !arr[i];
+          if (arr.some(Boolean)) state.seriesProgress[key] = arr;
+          else delete state.seriesProgress[key];
+          persistUserData();
+          render();
+        };
+        seriesRow.appendChild(sBtn);
+      }
+      card.appendChild(seriesRow);
+    }
+
     const markRow = el('div','fc-mark-row');
     SET_RATING_LEVELS.forEach(level=>{
       const selected = status === level.value;
@@ -2795,6 +2865,11 @@ function renderFlashcardOverlay(plan){
       markRow.appendChild(btn);
     });
     card.appendChild(markRow);
+
+    const listenBtn = el('button', null, '🔊 Escuchar');
+    listenBtn.style.cssText = 'width:100%;margin-top:10px;background:var(--surface-2);border:2px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
+    listenBtn.onclick = ()=> speakText(buildSpeechText(entry, s));
+    card.appendChild(listenBtn);
 
     const secondaryRow = el('div');
     secondaryRow.style.cssText = 'display:flex;gap:10px;width:100%;margin-top:10px;';
@@ -2858,7 +2933,7 @@ function renderFlashcardOverlay(plan){
 
     const actions = el('div','fc-final-actions');
     const skipBtn = el('button','mark-btn','Cerrar sin guardar');
-    skipBtn.onclick = ()=>{ state.flashcard=null; render(); };
+    skipBtn.onclick = ()=>{ stopSpeaking(); state.flashcard=null; render(); };
     const saveBtn = el('button','mark-btn ok selected','Guardar nota');
     saveBtn.onclick = ()=>{
       const text = ta.value.trim();
@@ -3773,6 +3848,7 @@ function importBackupFile(file){
       state.plans = data.plans;
       state.checks = data.checks;
       state.notes = data.notes;
+      state.seriesProgress = data.seriesProgress || {};
       const sorted = [...state.plans].sort((a,b)=>a.uploadedAt-b.uploadedAt);
       state.activePlanId = sorted.length ? sorted[sorted.length-1].id : null;
       state.activeDay = null;
