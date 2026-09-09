@@ -2683,7 +2683,7 @@ function stopSpeaking(){
 }
 
 function openFlashcards(day, exIdx, cardIdx){
-  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false, lastSpokenIdx:null };
+  state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false };
   render();
 }
 
@@ -2815,11 +2815,6 @@ function renderFlashcardOverlay(plan){
       wrap.appendChild(cardArea);
       overlay.appendChild(wrap);
       return overlay;
-    }
-
-    if (state.flashcard.lastSpokenIdx !== cardIdx){
-      state.flashcard.lastSpokenIdx = cardIdx;
-      speakText(buildSpeechText(entry, s));
     }
 
     card.appendChild(el('div','fc-kg', kgDisplayText(s)));
