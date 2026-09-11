@@ -1733,6 +1733,7 @@ async function initApp(){
 
   try{ const raw = await storageGet(LAST_BACKUP_KEY); lastBackupTs = raw ? Number(raw) : null; }catch(e){ lastBackupTs = null; }
   try{ preferredVoiceURI = await storageGet(PREFERRED_VOICE_KEY); }catch(e){ preferredVoiceURI = null; }
+  try{ restTimerMuted = (await storageGet(REST_TIMER_MUTED_KEY)) === '1'; }catch(e){ restTimerMuted = false; }
 
   render();
   prefetchAllUserData();
@@ -2719,27 +2720,95 @@ function suggestRestSeconds(kind, pct){
 }
 
 let restTimerInterval = null;
+
+/* -- sonido del pitido, generado con el propio dispositivo (sin archivos) -- */
+let restAudioCtx = null;
+function playBeep(freq, duration){
+  if (restTimerMuted) return;
+  try{
+    if (!restAudioCtx) restAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (restAudioCtx.state === 'suspended') restAudioCtx.resume();
+    const osc = restAudioCtx.createOscillator();
+    const gain = restAudioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const now = restAudioCtx.currentTime;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.35, now+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now+duration);
+    osc.connect(gain); gain.connect(restAudioCtx.destination);
+    osc.start(now);
+    osc.stop(now+duration+0.02);
+  }catch(e){}
+}
+
+/* -- silenciar sonido/voz del cronómetro, guardado en este dispositivo -- */
+const REST_TIMER_MUTED_KEY = 'rest_timer_muted';
+let restTimerMuted = false;
+
 function startRestTimer(entry, kg, kind){
   const rm = entry ? estimatedRMFor(entry.code) : null;
   const pct = (rm && kg) ? (kg/rm) : null;
   const seconds = suggestRestSeconds(kind, pct);
-  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false };
+  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false, tenBeeped:false, lastSpokenSecond:null };
   if (restTimerInterval) clearInterval(restTimerInterval);
-  restTimerInterval = setInterval(()=>{
-    if (!state.restTimer){ clearInterval(restTimerInterval); restTimerInterval=null; return; }
-    if (Date.now() >= state.restTimer.endsAt && !state.restTimer.notified){
-      state.restTimer.notified = true;
-      try{ if (navigator.vibrate) navigator.vibrate([250,120,250,120,250]); }catch(e){}
-      speakText('Descanso terminado');
-    }
-    render();
-  }, 1000);
+  restTimerInterval = setInterval(restTimerTick, 1000);
   render();
 }
+
+function restTimerTick(){
+  const rt = state.restTimer;
+  if (!rt){ clearInterval(restTimerInterval); restTimerInterval=null; return; }
+  const remaining = Math.ceil((rt.endsAt - Date.now())/1000);
+
+  if (remaining <= 0 && !rt.notified){
+    rt.notified = true;
+    if (!restTimerMuted){
+      try{ if (navigator.vibrate) navigator.vibrate([250,120,250,120,250]); }catch(e){}
+      playBeep(880, 0.35);
+      speakText('Descanso terminado');
+    }
+  } else if (remaining === 10 && !rt.tenBeeped){
+    rt.tenBeeped = true;
+    playBeep(660, 0.15);
+  } else if (remaining>=1 && remaining<=5 && rt.lastSpokenSecond !== remaining){
+    rt.lastSpokenSecond = remaining;
+    playBeep(520, 0.1);
+    if (!restTimerMuted) speakText(String(remaining));
+  }
+
+  // Actualización quirúrgica: solo se toca el número del cronómetro, nunca
+  // se vuelve a dibujar toda la pantalla (si no, cualquier campo de texto
+  // abierto en ese momento -como el RPE- se borraría cada segundo).
+  if (!patchRestTimerBanner()) render();
+}
+
+function patchRestTimerBanner(){
+  const rt = state.restTimer;
+  const bar = document.getElementById('rest-timer-bar');
+  if (!rt || !bar) return false;
+  const remaining = Math.max(0, Math.ceil((rt.endsAt - Date.now())/1000));
+  const done = remaining <= 0;
+  if (String(bar.dataset.done) !== String(done)) return false; // cambia el layout -> hace falta un render completo, una sola vez
+  if (done) return true; // ya está en su estado final, nada que actualizar minuto a minuto
+  const mm = Math.floor(remaining/60), ss = remaining%60;
+  const timeEl = bar.querySelector('.rt-time');
+  if (timeEl) timeEl.textContent = mm + ':' + String(ss).padStart(2,'0');
+  return true;
+}
+
 function adjustRestTimer(deltaSeconds){
   if (!state.restTimer) return;
   state.restTimer.endsAt += deltaSeconds*1000;
-  if (Date.now() < state.restTimer.endsAt) state.restTimer.notified = false;
+  if (Date.now() < state.restTimer.endsAt){
+    state.restTimer.notified = false;
+    if (Math.ceil((state.restTimer.endsAt-Date.now())/1000) > 10) state.restTimer.tenBeeped = false;
+  }
+  patchRestTimerBanner() || render();
+}
+function toggleRestTimerMute(){
+  restTimerMuted = !restTimerMuted;
+  storageSet(REST_TIMER_MUTED_KEY, restTimerMuted ? '1' : '0');
   render();
 }
 function dismissRestTimer(){
@@ -2756,15 +2825,21 @@ function renderRestTimerBanner(){
   const timeStr = mm + ':' + String(ss).padStart(2,'0');
 
   const bar = el('div');
+  bar.id = 'rest-timer-bar';
+  bar.dataset.done = String(done);
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:500;background:' + (done ? 'var(--ok)' : '#20242e') + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);flex-wrap:wrap;';
 
   const label = el('div');
   label.innerHTML = '<div style="font-family:Oswald,sans-serif;font-weight:700;font-size:12px;letter-spacing:.04em;opacity:.85;">'+(done?'DESCANSO TERMINADO':'DESCANSO')+'</div>' +
-    '<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:'+(done?'20px':'32px')+';">'+(done?'¡A por la siguiente!':timeStr)+'</div>';
+    '<div class="rt-time" style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:'+(done?'20px':'32px')+';">'+(done?'¡A por la siguiente!':timeStr)+'</div>';
   bar.appendChild(label);
 
   const btns = el('div');
   btns.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  const muteBtn = el('button', null, restTimerMuted ? '🔇' : '🔊');
+  muteBtn.style.cssText = 'background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;padding:10px 12px;border-radius:8px;cursor:pointer;';
+  muteBtn.onclick = ()=> toggleRestTimerMute();
+  btns.appendChild(muteBtn);
   if (!done){
     const mkAdjBtn = (txt, delta)=>{
       const b = el('button', null, txt);
