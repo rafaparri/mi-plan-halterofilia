@@ -1649,6 +1649,7 @@ let state = {
   pendingImportFile: null,
   showBackupText: false,
   showVoicePicker: false,
+  restTimer: null,
   backupText: '',
   rmForm: null,            // { code, value, date } while the "+ Registrar RM" mini form is open
   metricForm: null,        // { date, peso, sistolica, diastolica } while the "+ Registrar medida" mini form is open
@@ -2013,6 +2014,8 @@ function renderReviewEntry(plan, day, entry, idx){
 
 function render(){
   root.innerHTML = '';
+  const restBanner = renderRestTimerBanner();
+  if (restBanner) root.appendChild(restBanner);
   if (state.ocrBusy){
     root.appendChild(renderOcrProgress());
     return;
@@ -2682,6 +2685,105 @@ function stopSpeaking(){
   try{ if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
 }
 
+/* ---- Cronómetro de descanso ---- */
+// Estima el 1RM conocido de un código: el registro manual más reciente en
+// Perfil, o si no hay, el peso más alto marcado bien/muy bien en entrenos.
+function estimatedRMFor(code){
+  const u = getActiveUser();
+  const arr = u.rms && u.rms[code];
+  if (arr && arr.length) return arr[arr.length-1].value;
+  const best = trainingMaxEntryForCode(code);
+  return best ? best.kg : null;
+}
+
+// Descanso sugerido en segundos, según el tipo de transición y el % del RM
+// conocido (si no se conoce el RM, se usa un valor moderado por defecto).
+// kind: 'sameWeight' (entre series del mismo peso), 'betweenWeights' (entre
+// pesos distintos del mismo movimiento), 'betweenExercises' (al cambiar de
+// movimiento).
+function suggestRestSeconds(kind, pct){
+  if (kind === 'betweenExercises'){
+    return (pct!==null && pct>=0.85) ? 360 : 240;
+  }
+  if (kind === 'sameWeight'){
+    if (pct===null) return 120;
+    if (pct < 0.70) return 90;
+    if (pct < 0.85) return 150;
+    return 240;
+  }
+  // betweenWeights
+  if (pct===null) return 120;
+  if (pct < 0.85) return 105;
+  if (pct < 0.92) return 180;
+  return 300;
+}
+
+let restTimerInterval = null;
+function startRestTimer(entry, kg, kind){
+  const rm = entry ? estimatedRMFor(entry.code) : null;
+  const pct = (rm && kg) ? (kg/rm) : null;
+  const seconds = suggestRestSeconds(kind, pct);
+  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false };
+  if (restTimerInterval) clearInterval(restTimerInterval);
+  restTimerInterval = setInterval(()=>{
+    if (!state.restTimer){ clearInterval(restTimerInterval); restTimerInterval=null; return; }
+    if (Date.now() >= state.restTimer.endsAt && !state.restTimer.notified){
+      state.restTimer.notified = true;
+      try{ if (navigator.vibrate) navigator.vibrate([250,120,250,120,250]); }catch(e){}
+      speakText('Descanso terminado');
+    }
+    render();
+  }, 1000);
+  render();
+}
+function adjustRestTimer(deltaSeconds){
+  if (!state.restTimer) return;
+  state.restTimer.endsAt += deltaSeconds*1000;
+  if (Date.now() < state.restTimer.endsAt) state.restTimer.notified = false;
+  render();
+}
+function dismissRestTimer(){
+  state.restTimer = null;
+  if (restTimerInterval){ clearInterval(restTimerInterval); restTimerInterval=null; }
+  render();
+}
+function renderRestTimerBanner(){
+  const rt = state.restTimer;
+  if (!rt) return null;
+  const remaining = Math.max(0, Math.ceil((rt.endsAt - Date.now())/1000));
+  const done = remaining <= 0;
+  const mm = Math.floor(remaining/60), ss = remaining%60;
+  const timeStr = mm + ':' + String(ss).padStart(2,'0');
+
+  const bar = el('div');
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:500;background:' + (done ? 'var(--ok)' : '#20242e') + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);flex-wrap:wrap;';
+
+  const label = el('div');
+  label.innerHTML = '<div style="font-family:Oswald,sans-serif;font-weight:700;font-size:12px;letter-spacing:.04em;opacity:.85;">'+(done?'DESCANSO TERMINADO':'DESCANSO')+'</div>' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:'+(done?'20px':'32px')+';">'+(done?'¡A por la siguiente!':timeStr)+'</div>';
+  bar.appendChild(label);
+
+  const btns = el('div');
+  btns.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  if (!done){
+    const mkAdjBtn = (txt, delta)=>{
+      const b = el('button', null, txt);
+      b.style.cssText = 'background:rgba(255,255,255,.15);border:none;color:#fff;font-family:Oswald,sans-serif;font-weight:700;font-size:15px;padding:10px 12px;border-radius:8px;cursor:pointer;';
+      b.onclick = ()=> adjustRestTimer(delta);
+      return b;
+    };
+    btns.appendChild(mkAdjBtn('−30s', -30));
+    btns.appendChild(mkAdjBtn('+30s', 30));
+  }
+  const skip = el('button', null, done ? '✕' : 'Saltar');
+  skip.style.cssText = 'background:rgba(255,255,255,.2);border:none;color:#fff;font-family:Oswald,sans-serif;font-weight:700;font-size:15px;padding:10px 14px;border-radius:8px;cursor:pointer;';
+  skip.onclick = ()=> dismissRestTimer();
+  btns.appendChild(skip);
+  bar.appendChild(btns);
+
+  return bar;
+}
+
 function openFlashcards(day, exIdx, cardIdx){
   state.flashcard = { day, exIdx, cardIdx: cardIdx||0, dir:null, showMemo:false, memoDraft:undefined, confirmDeleteSetIdx:null, editingSet:false };
   render();
@@ -2864,10 +2966,12 @@ function renderFlashcardOverlay(plan){
           (done ? 'var(--ok)' : 'var(--surface-3)') + ';background:' + (done ? 'var(--ok)' : 'var(--surface-2)') + ';color:' + (done ? '#fff' : 'var(--chalk)') + ';';
         sBtn.onclick = ()=>{
           const arr = state.seriesProgress[key] ? state.seriesProgress[key].slice() : [];
+          const wasDone = arr[i];
           arr[i] = !arr[i];
           if (arr.some(Boolean)) state.seriesProgress[key] = arr;
           else delete state.seriesProgress[key];
           persistUserData();
+          if (!wasDone) startRestTimer(entry, s.kg, 'sameWeight');
           render();
         };
         seriesRow.appendChild(sBtn);
@@ -2885,6 +2989,10 @@ function renderFlashcardOverlay(plan){
         state.checks[key] = wasThis ? null : level.value;
         if (!state.checks[key]) delete state.checks[key];
         persistUserData();
+        if (!wasThis){
+          const kind = (cardIdx < totalCards-1) ? 'betweenWeights' : 'betweenExercises';
+          startRestTimer(entry, s.kg, kind);
+        }
         if (!wasThis && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
         else render();
       };
