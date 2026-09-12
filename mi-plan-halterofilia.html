@@ -2704,19 +2704,19 @@ function estimatedRMFor(code){
 // movimiento).
 function suggestRestSeconds(kind, pct){
   if (kind === 'betweenExercises'){
-    return (pct!==null && pct>=0.85) ? 360 : 240;
+    return (pct!==null && pct>=0.85) ? 180 : 150;
   }
   if (kind === 'sameWeight'){
-    if (pct===null) return 120;
-    if (pct < 0.70) return 90;
-    if (pct < 0.85) return 150;
-    return 240;
+    if (pct===null) return 100;
+    if (pct < 0.70) return 75;
+    if (pct < 0.85) return 130;
+    return 180;
   }
   // betweenWeights
-  if (pct===null) return 120;
-  if (pct < 0.85) return 105;
-  if (pct < 0.92) return 180;
-  return 300;
+  if (pct===null) return 100;
+  if (pct < 0.85) return 100;
+  if (pct < 0.92) return 140;
+  return 180;
 }
 
 let restTimerInterval = null;
