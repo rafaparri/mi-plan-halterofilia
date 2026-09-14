@@ -710,12 +710,27 @@ function parseRows(rows){
   const skipWords = ['PLAN','SEMANA','KG','MAXIMOS','MÁXIMOS','OBJETIVOS','COMPETICION','COMPETICIÓN','HISTORICO','HISTÓRICO','MEJORA','CODIGO','CÓDIGO','REF','ENTRENAMIENTO'];
   for (let r=0; r<headerRowIdx; r++){
     const row = rows[r] || [];
+    // Algunas plantillas tienen una tabla de "MÁXIMOS" con dos filas,
+    // Histórico/Semana, comparando la marca de esta semana con la marca de
+    // siempre — esa "Semana" NO es el número de semana del plan, es un peso.
+    // Se descarta si la fila de arriba dice "Histórico".
+    const prevRow = rows[r-1] || [];
+    const prevRowIsHistorico = prevRow.some(v=>{
+      const u = norm(v).toUpperCase();
+      return u.includes('HISTÓRICO') || u.includes('HISTORICO');
+    });
     for (let c=0; c<row.length; c++){
       const val = norm(row[c]);
       const up = val.toUpperCase();
-      if (up === 'SEMANA'){
+      if (up === 'SEMANA' && !prevRowIsHistorico){
         for (let cc=c+1; cc<row.length; cc++){
-          if (row[cc] !== null && norm(row[cc]) !== ''){ week = row[cc]; break; }
+          if (row[cc] !== null && norm(row[cc]) !== ''){
+            const n = Number(row[cc]);
+            // un número de semana real de una temporada es un valor pequeño;
+            // si no lo es (p.ej. viene de una celda de peso), se descarta
+            if (!isNaN(n) && n>=1 && n<=60) week = n;
+            break;
+          }
         }
       }
       if (up.includes('JORNADA') || up.includes('ANDALUZ') || up.includes('LIGA') || up.includes('CAMPEONATO')){
@@ -1637,6 +1652,7 @@ let state = {
   confirmDeleteId: null,
   renamingPlanId: null,
   renamePlanDraft: '',
+  renameWeekDraft: '',
   newWeightDraft: null,   // { kg, series, reps } while the "+ nuevo peso" mini form is open
   showUsers: false,
   showProfile: false,
@@ -1745,7 +1761,13 @@ async function initApp(){
 }
 
 function planId(meta){
-  return 'w' + (meta.week ?? 'x') + '_' + (meta.jornada ? meta.jornada.replace(/\s+/g,'').slice(0,20) : 'plan');
+  // El prefijo (semana/jornada) es solo para que el id sea legible; lo que
+  // garantiza que nunca se repita entre subidas distintas es el sufijo
+  // (marca de tiempo + aleatorio). Antes el id dependía solo de la semana/
+  // jornada detectadas, y si esos datos no se leían bien (o coincidían con
+  // los de otra semana), una subida nueva podía sustituir por accidente a
+  // otra ya existente — heredando así sus marcas de bien/mal.
+  return 'w' + (meta.week ?? 'x') + '_' + (meta.jornada ? meta.jornada.replace(/\s+/g,'').slice(0,20) : 'plan') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 }
 
 function tonnage(dayEntries){
@@ -2246,9 +2268,7 @@ function handleFile(file){
       }
       const id = planId(meta);
       const plan = { id, meta, days: result.days, uploadedAt: Date.now(), needsReview: !!result.needsReview };
-      const existingIdx = state.plans.findIndex(p=>p.id===id);
-      if (existingIdx >= 0) state.plans[existingIdx] = plan;
-      else state.plans.push(plan);
+      state.plans.push(plan);
       persistUserData();
       state.activePlanId = id;
       state.activeDay = null;
@@ -2721,7 +2741,7 @@ function suggestRestSeconds(kind, pct){
 
 let restTimerInterval = null;
 
-/* -- sonido del pitido, generado con el propio dispositivo (sin archivos) -- */
+/* -- sonidos del cronómetro, generados con el propio dispositivo (sin archivos) -- */
 let restAudioCtx = null;
 function playBeep(freq, duration){
   if (restTimerMuted) return;
@@ -2741,18 +2761,64 @@ function playBeep(freq, duration){
     osc.stop(now+duration+0.02);
   }catch(e){}
 }
+// Bocina tipo reloj de box (dos pulsos secos, más grave y áspero que un pitido).
+function playHorn(){
+  if (restTimerMuted) return;
+  try{
+    if (!restAudioCtx) restAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (restAudioCtx.state === 'suspended') restAudioCtx.resume();
+    const now = restAudioCtx.currentTime;
+    [0, 0.2].forEach(offset=>{
+      const osc = restAudioCtx.createOscillator();
+      const gain = restAudioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 420;
+      gain.gain.setValueAtTime(0.0001, now+offset);
+      gain.gain.exponentialRampToValueAtTime(0.32, now+offset+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now+offset+0.18);
+      osc.connect(gain); gain.connect(restAudioCtx.destination);
+      osc.start(now+offset);
+      osc.stop(now+offset+0.2);
+    });
+  }catch(e){}
+}
 
 /* -- silenciar sonido/voz del cronómetro, guardado en este dispositivo -- */
 const REST_TIMER_MUTED_KEY = 'rest_timer_muted';
 let restTimerMuted = false;
 
+/* -- Wake Lock: evita que la pantalla se bloquee sola por inactividad
+   mientras hay un descanso en marcha (si se bloquea a mano con el botón
+   físico, eso sí lo puede pausar el sistema; esto cubre el caso normal). -- */
+let restWakeLock = null;
+async function acquireRestWakeLock(){
+  try{
+    if ('wakeLock' in navigator){
+      restWakeLock = await navigator.wakeLock.request('screen');
+      restWakeLock.addEventListener('release', ()=>{ restWakeLock = null; });
+    }
+  }catch(e){ restWakeLock = null; }
+}
+function releaseRestWakeLock(){
+  try{ if (restWakeLock) restWakeLock.release(); }catch(e){}
+  restWakeLock = null;
+}
+if (typeof document !== 'undefined'){
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.visibilityState === 'visible' && state.restTimer && !restWakeLock){
+      acquireRestWakeLock();
+    }
+  });
+}
+
 function startRestTimer(entry, kg, kind){
   const rm = entry ? estimatedRMFor(entry.code) : null;
   const pct = (rm && kg) ? (kg/rm) : null;
   const seconds = suggestRestSeconds(kind, pct);
-  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false, tenBeeped:false, lastSpokenSecond:null };
+  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false, tenBeeped:false, fiveBeeped:false, lastSpokenSecond:null };
   if (restTimerInterval) clearInterval(restTimerInterval);
   restTimerInterval = setInterval(restTimerTick, 1000);
+  acquireRestWakeLock();
   render();
 }
 
@@ -2765,15 +2831,17 @@ function restTimerTick(){
     rt.notified = true;
     if (!restTimerMuted){
       try{ if (navigator.vibrate) navigator.vibrate([250,120,250,120,250]); }catch(e){}
-      playBeep(880, 0.35);
+      playHorn();
       speakText('Descanso terminado');
     }
   } else if (remaining === 10 && !rt.tenBeeped){
     rt.tenBeeped = true;
-    playBeep(660, 0.15);
-  } else if (remaining>=1 && remaining<=5 && rt.lastSpokenSecond !== remaining){
+    playHorn();
+  } else if (remaining === 5 && !rt.fiveBeeped){
+    rt.fiveBeeped = true;
+    playHorn();
+  } else if (remaining>=1 && remaining<=3 && rt.lastSpokenSecond !== remaining){
     rt.lastSpokenSecond = remaining;
-    playBeep(520, 0.1);
     if (!restTimerMuted) speakText(String(remaining));
   }
 
@@ -2800,9 +2868,12 @@ function patchRestTimerBanner(){
 function adjustRestTimer(deltaSeconds){
   if (!state.restTimer) return;
   state.restTimer.endsAt += deltaSeconds*1000;
-  if (Date.now() < state.restTimer.endsAt){
+  const remaining = Math.ceil((state.restTimer.endsAt-Date.now())/1000);
+  if (remaining > 0){
     state.restTimer.notified = false;
-    if (Math.ceil((state.restTimer.endsAt-Date.now())/1000) > 10) state.restTimer.tenBeeped = false;
+    if (remaining > 10) state.restTimer.tenBeeped = false;
+    if (remaining > 5) state.restTimer.fiveBeeped = false;
+    if (remaining > 3) state.restTimer.lastSpokenSecond = null;
   }
   patchRestTimerBanner() || render();
 }
@@ -2814,6 +2885,7 @@ function toggleRestTimerMute(){
 function dismissRestTimer(){
   state.restTimer = null;
   if (restTimerInterval){ clearInterval(restTimerInterval); restTimerInterval=null; }
+  releaseRestWakeLock();
   render();
 }
 function renderRestTimerBanner(){
@@ -2885,9 +2957,23 @@ function renderFlashcardOverlay(plan){
   titleWrap.appendChild(el('div','fc-name', entry.name || ('Código '+entry.code)));
   titleWrap.appendChild(el('div','fc-progress', (cardIdx+1)+' / '+totalCards));
   topBar.appendChild(titleWrap);
+
+  const rightWrap = el('div');
+  rightWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:8px;';
+  const nextHint = el('div');
+  if (cardIdx < totalCards-1){
+    const nextSet = entry.sets[cardIdx+1];
+    nextHint.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:14px;color:var(--muted-2);text-align:right;max-width:150px;';
+    nextHint.textContent = kgDisplayText(nextSet) + '×' + (nextSet.series||'?') + '×' + repDisplayText(nextSet) + ' →';
+  } else {
+    nextHint.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--red);letter-spacing:.04em;';
+    nextHint.textContent = 'FIN';
+  }
+  rightWrap.appendChild(nextHint);
   const closeBtn = el('button','fc-close','✕');
   closeBtn.onclick = ()=>{ stopSpeaking(); state.flashcard=null; state.newWeightDraft=null; render(); };
-  topBar.appendChild(closeBtn);
+  rightWrap.appendChild(closeBtn);
+  topBar.appendChild(rightWrap);
   wrap.appendChild(topBar);
 
   const cardArea = el('div','fc-card-area');
@@ -3397,17 +3483,24 @@ function renderHistorySheet(){
       inp.placeholder = p.meta.athlete || 'Nombre de la semana';
       inp.style.cssText = 'flex:1;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:Inter,sans-serif;font-size:13.5px;padding:8px 10px;';
       inp.oninput = (e)=>{ state.renamePlanDraft = e.target.value; };
+      const weekInp = document.createElement('input');
+      weekInp.type = 'number'; weekInp.inputMode = 'numeric'; weekInp.value = state.renameWeekDraft || '';
+      weekInp.placeholder = 'Nº sem.';
+      weekInp.style.cssText = 'width:64px;flex-shrink:0;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:8px;color:var(--chalk);font-family:IBM Plex Mono,monospace;font-size:13.5px;padding:8px 6px;text-align:center;';
+      weekInp.oninput = (e)=>{ state.renameWeekDraft = e.target.value; };
       const okBtn = el('button', null, '✓');
       okBtn.style.cssText = 'background:var(--ok);border:none;color:#fff;width:34px;height:34px;border-radius:8px;cursor:pointer;flex-shrink:0;';
       okBtn.onclick = (e)=>{
         e.stopPropagation();
         const name = state.renamePlanDraft.trim();
         p.customName = name || null;
+        const wkNum = parseInt(state.renameWeekDraft, 10);
+        p.meta.week = (!isNaN(wkNum) && wkNum>0) ? wkNum : null;
         persistUserData();
         state.renamingPlanId = null;
         render();
       };
-      row.appendChild(inp); row.appendChild(okBtn);
+      row.appendChild(inp); row.appendChild(weekInp); row.appendChild(okBtn);
       item.appendChild(row);
     } else {
       const l = el('div');
@@ -3451,6 +3544,7 @@ function renderHistorySheet(){
         e.stopPropagation();
         state.renamingPlanId = p.id;
         state.renamePlanDraft = p.customName || '';
+        state.renameWeekDraft = (p.meta.week!==null && p.meta.week!==undefined) ? String(p.meta.week) : '';
         render();
       };
       btns.appendChild(renBtn);
