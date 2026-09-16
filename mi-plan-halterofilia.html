@@ -2961,7 +2961,7 @@ function renderFlashcardOverlay(plan){
   const rightWrap = el('div');
   rightWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:8px;';
   const nextHint = el('div');
-  if (cardIdx < totalCards-1){
+  if (cardIdx < entry.sets.length-1){
     const nextSet = entry.sets[cardIdx+1];
     nextHint.style.cssText = 'font-family:IBM Plex Mono,monospace;font-weight:700;font-size:20px;color:var(--chalk);text-align:right;max-width:170px;line-height:1.2;';
     nextHint.textContent = kgDisplayText(nextSet) + '×' + (nextSet.series||'?') + '×' + repDisplayText(nextSet) + ' →';
@@ -3151,7 +3151,7 @@ function renderFlashcardOverlay(plan){
         if (!state.checks[key]) delete state.checks[key];
         persistUserData();
         if (!wasThis){
-          const kind = (cardIdx < totalCards-1) ? 'betweenWeights' : 'betweenExercises';
+          const kind = (cardIdx < entry.sets.length-1) ? 'betweenWeights' : 'betweenExercises';
           startRestTimer(entry, s.kg, kind);
         }
         if (!wasThis && cardIdx < totalCards-1) goToCard(cardIdx+1, 'next');
