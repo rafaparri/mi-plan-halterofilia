@@ -582,7 +582,12 @@ function parseCodeCell(codeCell){
   if (!raw) return null;
 
   if (/^\d/.test(raw)){
-    const segments = raw.split('+').map(s=>s.trim()).filter(Boolean);
+    // Formato "51 - SENTADILLA DELANTE" o "29 (aclaración) + 18 - PUSH JERK + JERK":
+    // lo que va tras el primer " - " es solo el nombre, se descarta (el
+    // nombre se saca del diccionario a partir del código).
+    const dashIdx = raw.search(/\s-\s/);
+    const codePart = dashIdx >= 0 ? raw.slice(0, dashIdx).trim() : raw;
+    const segments = codePart.split('+').map(s=>s.trim()).filter(Boolean);
     if (!segments.length) return null;
     const parts = [];
     for (const seg of segments){
@@ -687,7 +692,7 @@ function parseRows(rows){
     const row = rows[r] || [];
     for (let c=0; c<row.length; c++){
       const val = norm(row[c]).toUpperCase();
-      if (val === 'CODIGO' || val === 'CÓDIGO'){ headerRowIdx = r; codeColIdx = c; break; }
+      if (/^C[OÓ]DIGO\b/.test(val)){ headerRowIdx = r; codeColIdx = c; break; }
     }
     if (headerRowIdx !== -1) break;
   }
