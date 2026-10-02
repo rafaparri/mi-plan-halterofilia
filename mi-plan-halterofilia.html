@@ -1417,6 +1417,14 @@ function deleteUserDataAsync(userId){
 function persistUserData(){
   saveUserDataAsync(activeUserId, { plans: state.plans, checks: state.checks, notes: state.notes, seriesProgress: state.seriesProgress });
 }
+
+// Graba la fecha real (de hoy) en la que se marcó algo por primera vez en
+// un día del plan — "Lunes de la semana 12" no dice CUÁNDO se entrenó de
+// verdad; esto sí. Solo se graba una vez; no se pisa si ya había fecha.
+function recordDayDate(plan, day){
+  if (!plan.dayDates) plan.dayDates = {};
+  if (!plan.dayDates[day]) plan.dayDates[day] = Date.now();
+}
 function prefetchAllUserData(){
   users.forEach(u=>{
     if (!userDataCache[u.id]){
@@ -3144,6 +3152,7 @@ function renderFlashcardOverlay(plan){
           arr[i] = !arr[i];
           if (arr.some(Boolean)) state.seriesProgress[key] = arr;
           else delete state.seriesProgress[key];
+          if (!wasDone) recordDayDate(plan, day);
           persistUserData();
           if (!wasDone) startRestTimer(entry, s.kg, 'sameWeight');
           render();
@@ -3162,6 +3171,7 @@ function renderFlashcardOverlay(plan){
         const wasThis = status === level.value;
         state.checks[key] = wasThis ? null : level.value;
         if (!state.checks[key]) delete state.checks[key];
+        if (!wasThis) recordDayDate(plan, day);
         persistUserData();
         if (!wasThis){
           const kind = (cardIdx < entry.sets.length-1) ? 'betweenWeights' : 'betweenExercises';
@@ -3250,8 +3260,10 @@ function renderFlashcardOverlay(plan){
     const saveBtn = el('button','mark-btn ok selected','Guardar nota');
     saveBtn.onclick = ()=>{
       const text = ta.value.trim();
-      if (text || draft.rpe!==null || draft.feeling!==null) state.notes[nKey] = { text, rpe: draft.rpe, feeling: draft.feeling };
-      else delete state.notes[nKey];
+      if (text || draft.rpe!==null || draft.feeling!==null){
+        state.notes[nKey] = { text, rpe: draft.rpe, feeling: draft.feeling };
+        recordDayDate(plan, day);
+      } else delete state.notes[nKey];
       persistUserData();
       state.flashcard = null;
       render();
@@ -4680,12 +4692,16 @@ function renderDayNoteOverlay(plan){
   const saveBtn = el('button','mark-btn ok selected','Guardar todo');
   saveBtn.style.cssText += 'width:100%;';
   saveBtn.onclick = ()=>{
+    let savedAnything = false;
     Object.keys(drafts).forEach(k=>{
       const d = drafts[k];
       const sKey = k==='general' ? generalKey : noteKey(plan, day, parseInt(k.slice(3),10));
-      if (d.text || d.rpe!==null || d.feeling!==null) state.notes[sKey] = { text: d.text||'', rpe: d.rpe, feeling: d.feeling };
-      else delete state.notes[sKey];
+      if (d.text || d.rpe!==null || d.feeling!==null){
+        state.notes[sKey] = { text: d.text||'', rpe: d.rpe, feeling: d.feeling };
+        savedAnything = true;
+      } else delete state.notes[sKey];
     });
+    if (savedAnything) recordDayDate(plan, day);
     persistUserData();
     close();
   };
@@ -4953,10 +4969,13 @@ function dayReportData(plan, day){
   const badSets = watchList.length; // a vigilar: valoradas mal o muy mal
   const avgRating = allRatings.length ? allRatings.reduce((a,b)=>a+b,0)/allRatings.length : null;
   const u = getActiveUser();
+  const dateMs = plan.dayDates && plan.dayDates[day];
+  const dateStr = dateMs ? new Date(dateMs).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'numeric' }) : null;
   const data = {
     dayName: DAY_NAMES[day],
     week: plan.meta && plan.meta.week!=null ? plan.meta.week : null,
     athlete: u.name,
+    dateStr,
     competition: daysToCompetition(u),
     exLines, watchList, records, totalSets, okSets, badSets, avgRating,
     completion: totalSets ? Math.round(100*okSets/totalSets) : null,
@@ -5056,7 +5075,7 @@ function localWeekSummary(perDay){
 
 function dayReportPlainText(data, memoText){
   const lines = [];
-  lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.week!==null ? ' · Semana '+data.week : ''));
+  lines.push('INFORME DE ENTRENO — ' + data.dayName + (data.dateStr ? ' · '+data.dateStr : '') + (data.week!==null ? ' · Semana '+data.week : ''));
   lines.push('Atleta: ' + data.athlete);
   if (data.competition){
     const compName = data.competition.name ? (data.competition.name + ' — ') : '';
@@ -5124,7 +5143,7 @@ function weekReportPlainText(plan, perDay, memoText, status, watchPatterns, keyw
   }
   lines.push('');
   perDay.forEach(d=>{
-    lines.push(d.status.icon + ' ' + d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
+    lines.push(d.status.icon + ' ' + d.dayName + (d.dateStr?' ('+d.dateStr+')':'') + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
       ' · ' + d.tonnageKg + 'kg' +
       (d.rpe!==null ? ' · RPE '+d.rpe : '') +
       (d.feeling ? ' · ' + feelingLabel(d.feeling) : '') +
@@ -5225,7 +5244,7 @@ function generateDayReportPDF(data, memoText){
   doc.text('INFORME DE ENTRENO', textX, 15);
   doc.setFont('helvetica','normal'); doc.setFontSize(11);
   doc.setTextColor(225,225,225);
-  doc.text(data.dayName + (data.week!==null ? '  ·  Semana '+data.week : ''), textX, 23);
+  doc.text(data.dayName + (data.dateStr ? '  ·  '+data.dateStr : '') + (data.week!==null ? '  ·  Semana '+data.week : ''), textX, 23);
   doc.text('Atleta: ' + data.athlete, textX, 30);
 
   const isWatch = data.status.label === 'A vigilar';
@@ -5462,7 +5481,7 @@ function generateWeekReportPDF(plan, perDay, memoText, status, watchPatterns, ke
       y += 8;
     }
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(30,30,30);
-    doc.text(d.dayName.toUpperCase() + ' — ' + d.status.label.toUpperCase(), marginX, y);
+    doc.text(d.dayName.toUpperCase() + (d.dateStr ? ' ('+d.dateStr+')' : '') + ' — ' + d.status.label.toUpperCase(), marginX, y);
     y += 6;
     doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(80,80,80);
     const metricsLine = 'Cumplimiento: ' + d.okSets+'/'+d.totalSets + (d.completion!==null?' ('+d.completion+'%)':'') +
@@ -5533,6 +5552,12 @@ function reportActionsRow(subject, text, pdfFn){
 function reportDataBlock(data){
   const wrap = el('div');
   wrap.style.cssText = 'background:var(--surface-2);border-radius:10px;padding:16px;';
+
+  if (data.dateStr){
+    const dateRow = el('div', null, data.dateStr);
+    dateRow.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:15px;color:var(--muted-2);margin-bottom:4px;';
+    wrap.appendChild(dateRow);
+  }
 
   const statusRow = el('div');
   const isWatch = data.status.label === 'A vigilar';
@@ -5708,7 +5733,7 @@ function renderWeekReportOverlay(plan){
   r.perDay.forEach(d=>{
     const dCard = el('div');
     dCard.style.cssText = 'margin-bottom:14px;';
-    const dHead = el('div', null, d.status.icon + '  ' + d.dayName.toUpperCase());
+    const dHead = el('div', null, d.status.icon + '  ' + d.dayName.toUpperCase() + (d.dateStr ? '  ·  '+d.dateStr : ''));
     dHead.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:6px;';
     dCard.appendChild(dHead);
     dCard.appendChild(reportDataBlock(d));
