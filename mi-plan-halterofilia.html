@@ -3389,6 +3389,17 @@ function buildAnalytics(){
   return byCode;
 }
 
+// Movimientos fijos para la sección "Máximos acumulados" del informe
+// semanal: arrancada, dos tiempos, cargada, jerk, sentadilla delante y
+// sentadilla detrás — se entrenen o no esa semana en concreto.
+const WEEK_CHART_CODES = [1, 10, 11, 18, 51, 50];
+function weekMovementCharts(){
+  const byCode = buildAnalytics();
+  return WEEK_CHART_CODES
+    .filter(code=>byCode[code] && byCode[code].points.length)
+    .map(code=>({ code, name: byCode[code].name, points: byCode[code].points }));
+}
+
 function sparklineSVG(points){
   const width = 280, height = 100, padX = 16, padY = 16;
   const kgs = points.map(p=>p.maxKg);
@@ -5122,7 +5133,7 @@ function generateDayReport(plan, day){
   render();
 }
 
-function weekReportPlainText(plan, perDay, memoText, status, watchPatterns, keywordPatterns){
+function weekReportPlainText(plan, perDay, memoText, status, watchPatterns, keywordPatterns, movementCharts){
   const lines = [];
   lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Programación semanal'));
   lines.push('Atleta: ' + getActiveUser().name);
@@ -5149,6 +5160,14 @@ function weekReportPlainText(plan, perDay, memoText, status, watchPatterns, keyw
       (d.feeling ? ' · ' + feelingLabel(d.feeling) : '') +
       (d.note ? ' · nota: "' + d.note + '"' : ''));
   });
+  if (movementCharts && movementCharts.length){
+    lines.push('');
+    lines.push('MÁXIMOS ACUMULADOS:');
+    movementCharts.forEach(mc=>{
+      const last = mc.points[mc.points.length-1].maxKg;
+      lines.push('- ' + mc.name + ': ' + last + 'kg (' + mc.points.map(p=>p.label+':'+p.maxKg).join(' → ') + ')');
+    });
+  }
   if (memoText){
     lines.push('');
     lines.push('LECTURA DEL ENTRENADOR:');
@@ -5163,7 +5182,8 @@ function generateWeekReport(plan){
   const summary = localWeekSummary(perDay);
   const watchPatterns = weekWatchPatterns(perDay);
   const keywordPatterns = weekNoteKeywordPatterns(perDay);
-  state.weekReport = { planId: plan.id, perDay, status, watchPatterns, keywordPatterns, memo: { loading:false, text: summary, error:null } };
+  const movementCharts = weekMovementCharts();
+  state.weekReport = { planId: plan.id, perDay, status, watchPatterns, keywordPatterns, movementCharts, memo: { loading:false, text: summary, error:null } };
   render();
 }
 
@@ -5375,7 +5395,7 @@ function generateDayReportPDF(data, memoText){
   doc.save('informe-' + fileDay + (data.week!==null?'-semana'+data.week:'') + '.pdf');
 }
 
-function generateWeekReportPDF(plan, perDay, memoText, status, watchPatterns, keywordPatterns){
+function generateWeekReportPDF(plan, perDay, memoText, status, watchPatterns, keywordPatterns, movementCharts){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'mm', format:'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -5510,6 +5530,60 @@ function generateWeekReportPDF(plan, perDay, memoText, status, watchPatterns, ke
     }
     y += 5;
   });
+
+  if (movementCharts && movementCharts.length){
+    checkPageBreak(14);
+    sectionTitle('MÁXIMOS ACUMULADOS POR MOVIMIENTO', [40,40,40]);
+
+    function ratingColorPDF(avg){
+      if (avg===null) return [136,146,160];
+      const r = Math.round(avg);
+      return ({1:[193,74,58],2:[217,121,63],3:[201,154,46],4:[90,143,176],5:[47,125,196]})[r] || [136,146,160];
+    }
+    function drawMovementChart(mc, x, yTop, w, h){
+      doc.setDrawColor(225,225,225);
+      doc.roundedRect(x, yTop, w, h, 2, 2, 'S');
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(40,40,40);
+      doc.text(mc.name, x+5, yTop+8);
+
+      const pts = mc.points;
+      const kgs = pts.map(p=>p.maxKg);
+      const minKg = Math.min(...kgs), maxKg = Math.max(...kgs);
+      const padTop = 16, padBottom = 10, padX = 8;
+      const chartW = w - padX*2, chartH = h - padTop - padBottom;
+      const range = (maxKg-minKg) || 1;
+
+      const coords = pts.map((p,i)=>({
+        x: x + padX + (chartW * (i/(pts.length-1||1))),
+        y: yTop + padTop + chartH - ((p.maxKg-minKg)/range)*chartH,
+        p
+      }));
+
+      doc.setDrawColor(201,154,46);
+      doc.setLineWidth(0.6);
+      for (let i=0;i<coords.length-1;i++) doc.line(coords[i].x, coords[i].y, coords[i+1].x, coords[i+1].y);
+      coords.forEach(c=>{
+        const avg = c.p.ratings && c.p.ratings.length ? c.p.ratings.reduce((a,b)=>a+b,0)/c.p.ratings.length : null;
+        const col = ratingColorPDF(avg);
+        doc.setFillColor(col[0],col[1],col[2]);
+        doc.circle(c.x, c.y, 1.6, 'F');
+      });
+
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(120,120,120);
+      pts.forEach((p,i)=>{ doc.text(p.label, coords[i].x, yTop+h-3, {align:'center'}); });
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(30,30,30);
+      doc.text(maxKg+'kg', x+w-5, yTop+8, {align:'right'});
+    }
+
+    const chartH = 40, chartGap = 8;
+    movementCharts.forEach(mc=>{
+      checkPageBreak(chartH+chartGap);
+      drawMovementChart(mc, marginX, y, contentW, chartH);
+      y += chartH + chartGap;
+    });
+    y += 2;
+  }
 
   if (memoText){
     checkPageBreak(14);
@@ -5743,6 +5817,28 @@ function renderWeekReportOverlay(plan){
     const e2 = el('div','empty-day','Sin datos esta semana.'); e2.style.fontSize='15px'; sheet.appendChild(e2);
   }
 
+  if (r.movementCharts && r.movementCharts.length){
+    const chartsTitle = el('div', null, 'MÁXIMOS ACUMULADOS POR MOVIMIENTO');
+    chartsTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--chalk);letter-spacing:.02em;margin:10px 0 12px;';
+    sheet.appendChild(chartsTitle);
+    r.movementCharts.forEach(mc=>{
+      const card = el('div');
+      card.style.cssText = 'background:var(--surface-2);border:1px solid var(--surface-3);border-radius:10px;padding:12px 14px;margin-bottom:12px;';
+      const head = el('div');
+      head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;';
+      head.appendChild(el('div', null, mc.name)).style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:15px;color:var(--chalk);';
+      const lastKg = mc.points[mc.points.length-1].maxKg;
+      const kgEl = el('div', null, lastKg+'kg');
+      kgEl.style.cssText = 'font-family:IBM Plex Mono,monospace;font-weight:700;font-size:15px;color:var(--yellow-deep);';
+      head.appendChild(kgEl);
+      card.appendChild(head);
+      const svgWrap = el('div');
+      svgWrap.innerHTML = sparklineSVG(mc.points);
+      card.appendChild(svgWrap);
+      sheet.appendChild(card);
+    });
+  }
+
   const memoWrap = el('div');
   memoWrap.style.cssText = 'margin-top:8px;';
   if (r.memo.loading){
@@ -5764,8 +5860,8 @@ function renderWeekReportOverlay(plan){
   const subject = 'Informe semanal' + (plan.meta && plan.meta.week!=null ? ' · Semana '+plan.meta.week : '') + ' — ' + getActiveUser().name;
   sheet.appendChild(reportActionsRow(
     subject,
-    weekReportPlainText(plan, r.perDay, r.memo.text, r.status, r.watchPatterns, r.keywordPatterns),
-    ()=> generateWeekReportPDF(plan, r.perDay, r.memo.text, r.status, r.watchPatterns, r.keywordPatterns)
+    weekReportPlainText(plan, r.perDay, r.memo.text, r.status, r.watchPatterns, r.keywordPatterns, r.movementCharts),
+    ()=> generateWeekReportPDF(plan, r.perDay, r.memo.text, r.status, r.watchPatterns, r.keywordPatterns, r.movementCharts)
   ));
 
   const closeBtn = el('button','sheet-close','Cerrar');
