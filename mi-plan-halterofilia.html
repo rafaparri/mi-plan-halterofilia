@@ -2820,7 +2820,7 @@ function startRestTimer(entry, kg, kind){
   const rm = entry ? estimatedRMFor(entry.code) : null;
   const pct = (rm && kg) ? (kg/rm) : null;
   const seconds = suggestRestSeconds(kind, pct);
-  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false, tenBeeped:false, fiveBeeped:false, lastSpokenSecond:null };
+  state.restTimer = { endsAt: Date.now() + seconds*1000, totalSeconds: seconds, notified:false, thirtyBeeped:false, tenBeeped:false, fiveBeeped:false, lastSpokenSecond:null };
   if (restTimerInterval) clearInterval(restTimerInterval);
   restTimerInterval = setInterval(restTimerTick, 1000);
   acquireRestWakeLock();
@@ -2839,13 +2839,20 @@ function restTimerTick(){
       playHorn();
       speakText('Descanso terminado');
     }
+  } else if (remaining === 30 && !rt.thirtyBeeped){
+    rt.thirtyBeeped = true;
+    playHorn();
+    if (!restTimerMuted) speakText('Treinta segundos');
   } else if (remaining === 10 && !rt.tenBeeped){
     rt.tenBeeped = true;
     playHorn();
+    if (!restTimerMuted) speakText('Diez segundos');
   } else if (remaining === 5 && !rt.fiveBeeped){
     rt.fiveBeeped = true;
+    rt.lastSpokenSecond = 5;
     playHorn();
-  } else if (remaining>=1 && remaining<=3 && rt.lastSpokenSecond !== remaining){
+    if (!restTimerMuted) speakText('5');
+  } else if (remaining>=1 && remaining<=5 && rt.lastSpokenSecond !== remaining){
     rt.lastSpokenSecond = remaining;
     if (!restTimerMuted) speakText(String(remaining));
   }
@@ -2876,9 +2883,10 @@ function adjustRestTimer(deltaSeconds){
   const remaining = Math.ceil((state.restTimer.endsAt-Date.now())/1000);
   if (remaining > 0){
     state.restTimer.notified = false;
+    if (remaining > 30) state.restTimer.thirtyBeeped = false;
     if (remaining > 10) state.restTimer.tenBeeped = false;
     if (remaining > 5) state.restTimer.fiveBeeped = false;
-    if (remaining > 3) state.restTimer.lastSpokenSecond = null;
+    if (remaining > 5) state.restTimer.lastSpokenSecond = null;
   }
   patchRestTimerBanner() || render();
 }
@@ -3165,6 +3173,11 @@ function renderFlashcardOverlay(plan){
       markRow.appendChild(btn);
     });
     card.appendChild(markRow);
+
+    const stopBtn = el('button', null, '⏹ Terminar ejercicio');
+    stopBtn.style.cssText = 'width:100%;margin-top:10px;background:var(--surface-2);border:3px solid var(--red);color:var(--red);font-family:Oswald,sans-serif;font-weight:700;font-size:21px;padding:17px 0;border-radius:12px;cursor:pointer;';
+    stopBtn.onclick = ()=>{ stopSpeaking(); dismissRestTimer(); goToCard(totalCards-1, 'next'); };
+    card.appendChild(stopBtn);
 
     const listenBtn = el('button', null, '🔊 Escuchar');
     listenBtn.style.cssText = 'width:100%;margin-top:10px;background:var(--surface-2);border:2px solid var(--surface-3);color:var(--chalk);font-family:Oswald,sans-serif;font-weight:700;font-size:20px;padding:16px 0;border-radius:12px;cursor:pointer;';
@@ -4986,6 +4999,45 @@ function weekStatus(perDay){
   return { icon:'✓', label:'Semana sólida' };
 }
 
+// Ejercicios que han aparecido "a vigilar" en 2 o más días distintos de la
+// semana — esto es un dato objetivo (viene de las valoraciones marcadas),
+// no una interpretación de texto.
+function weekWatchPatterns(perDay){
+  const byName = {};
+  perDay.forEach(d=>{
+    const namesThisDay = new Set(d.watchList.map(w=>w.name));
+    namesThisDay.forEach(name=>{
+      if (!byName[name]) byName[name] = [];
+      byName[name].push(d.dayName);
+    });
+  });
+  return Object.keys(byName).filter(n=>byName[n].length>=2).map(n=>({ name:n, days:byName[n] }));
+}
+
+// Palabras que se repiten en las notas de 2 o más días distintos. Es una
+// coincidencia de texto literal, no un análisis de significado — sirve
+// como pista de "esto se repite, lee las notas originales", no como
+// diagnóstico. (Un análisis real del lenguaje necesitaría IA, que no está
+// disponible fuera del entorno de Claude donde corre esta app.)
+const WEEK_PATTERN_STOPWORDS = new Set(['entreno','entrenamiento','hoy','dia','días','bien','mal','regular','mucho','muchas','poco','pocas','para','pero','como','esta','este','estoy','algo','todo','nada','semana','series','repes','kilos','general','sensacion','sensación']);
+function weekNoteKeywordPatterns(perDay){
+  const wordDays = {};
+  perDay.forEach(d=>{
+    if (!d.note) return;
+    const clean = d.note.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const words = clean.match(/[a-z]{5,}/g) || [];
+    new Set(words).forEach(w=>{
+      if (WEEK_PATTERN_STOPWORDS.has(w)) return;
+      if (!wordDays[w]) wordDays[w] = [];
+      wordDays[w].push(d.dayName);
+    });
+  });
+  return Object.keys(wordDays).filter(w=>wordDays[w].length>=2)
+    .map(w=>({ word:w, days:wordDays[w] }))
+    .sort((a,b)=>b.days.length-a.days.length)
+    .slice(0,6);
+}
+
 function localWeekSummary(perDay){
   const withData = perDay.filter(d=>d.totalSets>0);
   if (!withData.length) return null;
@@ -5051,11 +5103,25 @@ function generateDayReport(plan, day){
   render();
 }
 
-function weekReportPlainText(plan, perDay, memoText, status){
+function weekReportPlainText(plan, perDay, memoText, status, watchPatterns, keywordPatterns){
   const lines = [];
   lines.push('INFORME SEMANAL — ' + (plan.meta && plan.meta.week!=null ? 'Semana '+plan.meta.week : plan.meta.athlete || 'Programación semanal'));
   lines.push('Atleta: ' + getActiveUser().name);
   if (status) lines.push('Estado: ' + status.icon + ' ' + status.label.toUpperCase());
+  if (plan.weekComment){
+    lines.push('');
+    lines.push('COMENTARIO DEL ATLETA SOBRE LA SEMANA:');
+    lines.push(plan.weekComment);
+  }
+  if ((watchPatterns && watchPatterns.length) || (keywordPatterns && keywordPatterns.length)){
+    lines.push('');
+    lines.push('PATRONES DE LA SEMANA (para revisar):');
+    (watchPatterns||[]).forEach(p=> lines.push('- ' + p.name + ' ha salido a vigilar ' + p.days.length + ' días (' + p.days.join(', ') + ') — revisar técnica o carga.'));
+    if (keywordPatterns && keywordPatterns.length){
+      lines.push('- Palabras repetidas en las notas de varios días (revisar el texto original, esto es solo una pista automática): ' +
+        keywordPatterns.map(k=>'"'+k.word+'" ('+k.days.length+' días)').join(', ') + '.');
+    }
+  }
   lines.push('');
   perDay.forEach(d=>{
     lines.push(d.status.icon + ' ' + d.dayName + ': ' + d.okSets + '/' + d.totalSets + ' series' + (d.completion!==null?' ('+d.completion+'%)':'') +
@@ -5076,7 +5142,9 @@ function generateWeekReport(plan){
   const perDay = DAY_ORDER.filter(d=>plan.days[d] && plan.days[d].length).map(d=>dayReportData(plan, d));
   const status = weekStatus(perDay);
   const summary = localWeekSummary(perDay);
-  state.weekReport = { planId: plan.id, perDay, status, memo: { loading:false, text: summary, error:null } };
+  const watchPatterns = weekWatchPatterns(perDay);
+  const keywordPatterns = weekNoteKeywordPatterns(perDay);
+  state.weekReport = { planId: plan.id, perDay, status, watchPatterns, keywordPatterns, memo: { loading:false, text: summary, error:null } };
   render();
 }
 
@@ -5443,6 +5511,45 @@ function renderWeekReportOverlay(plan){
     sheet.appendChild(statusRow);
   }
 
+  const commentWrap = el('div');
+  commentWrap.style.cssText = 'margin-bottom:18px;';
+  const commentLbl = el('div', null, 'TU COMENTARIO SOBRE LA SEMANA');
+  commentLbl.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:14px;color:var(--muted-2);letter-spacing:.03em;margin-bottom:6px;';
+  commentWrap.appendChild(commentLbl);
+  const commentArea = document.createElement('textarea');
+  commentArea.rows = 3;
+  commentArea.placeholder = 'Ej. Semana de mucho estrés en el trabajo que se ha notado en los entrenos…';
+  commentArea.value = plan.weekComment || '';
+  commentArea.style.cssText = 'width:100%;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:10px;color:var(--chalk);font-family:Inter,sans-serif;font-size:16px;line-height:1.4;padding:12px;resize:vertical;';
+  commentArea.addEventListener('change', ()=>{
+    plan.weekComment = commentArea.value.trim() || null;
+    persistUserData();
+  });
+  commentWrap.appendChild(commentArea);
+  sheet.appendChild(commentWrap);
+
+  if ((r.watchPatterns && r.watchPatterns.length) || (r.keywordPatterns && r.keywordPatterns.length)){
+    const patBox = el('div');
+    patBox.style.cssText = 'background:var(--surface);border:2px solid var(--yellow-deep);border-radius:10px;padding:14px 16px;margin-bottom:18px;';
+    const patTitle = el('div', null, 'PATRONES DE LA SEMANA');
+    patTitle.style.cssText = 'font-family:Oswald,sans-serif;font-weight:700;font-size:16px;color:var(--yellow-deep);margin-bottom:10px;letter-spacing:.02em;';
+    patBox.appendChild(patTitle);
+    (r.watchPatterns||[]).forEach(p=>{
+      const line = el('div');
+      line.style.cssText = 'font-family:IBM Plex Mono,monospace;font-size:16px;color:var(--chalk);line-height:1.6;margin-bottom:4px;';
+      line.textContent = p.name + ' — a vigilar ' + p.days.length + ' días (' + p.days.join(', ') + ')';
+      patBox.appendChild(line);
+    });
+    if (r.keywordPatterns && r.keywordPatterns.length){
+      const kwLine = el('div');
+      kwLine.style.cssText = 'font-family:Inter,sans-serif;font-size:14px;color:var(--muted);line-height:1.6;margin-top:8px;';
+      kwLine.innerHTML = '<b style="color:var(--chalk);">Palabras que se repiten en las notas</b> (pista automática por coincidencia de texto, no un diagnóstico — conviene leer las notas originales de esos días): ' +
+        r.keywordPatterns.map(k=>'"'+k.word+'" ('+k.days.length+' días)').join(', ');
+      patBox.appendChild(kwLine);
+    }
+    sheet.appendChild(patBox);
+  }
+
   r.perDay.forEach(d=>{
     const dCard = el('div');
     dCard.style.cssText = 'margin-bottom:14px;';
@@ -5475,7 +5582,7 @@ function renderWeekReportOverlay(plan){
   sheet.appendChild(memoWrap);
 
   const subject = 'Informe semanal' + (plan.meta && plan.meta.week!=null ? ' · Semana '+plan.meta.week : '') + ' — ' + getActiveUser().name;
-  sheet.appendChild(reportActionsRow(subject, weekReportPlainText(plan, r.perDay, r.memo.text, r.status)));
+  sheet.appendChild(reportActionsRow(subject, weekReportPlainText(plan, r.perDay, r.memo.text, r.status, r.watchPatterns, r.keywordPatterns)));
 
   const closeBtn = el('button','sheet-close','Cerrar');
   closeBtn.onclick = close;
