@@ -849,6 +849,18 @@ function wo2ShowCodes(){
 }
 
 </script>
+<script>
+// Códigos de la tabla de origen junto al nombre: «Nombre (9+53)»
+function wo2CodeLabel(entry){
+  if (!entry) return '';
+  if (entry.parts && entry.parts.length) return entry.parts.map(p=> p.code).filter(c=> c !== null && c !== undefined).join('+');
+  return (entry.code !== null && entry.code !== undefined) ? String(entry.code) : '';
+}
+function wo2WithCode(name, entry){
+  const c = wo2CodeLabel(entry);
+  return c ? name + ' (' + c + ')' : name;
+}
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -2841,7 +2853,7 @@ function renderExerciseCard(plan, day, entry, idx){
   top.appendChild(el('div','ex-code', String(entry.code)));
   const info = el('div','ex-info');
   const nameText = entry.name || ('Código ' + entry.code + ' (sin identificar)');
-  info.appendChild(el('div','ex-name' + (entry.name?'':' unknown'), nameText));
+  info.appendChild(el('div','ex-name' + (entry.name?'':' unknown'), entry.name ? wo2WithCode(nameText, entry) : nameText));
   const ratings = entry.sets.map((s,si)=>normalizeCheck(state.checks[checkKey(plan,day,idx,si)])).filter(r=>r!==null);
   const subBits = [entry.sets.length + (entry.sets.length===1? ' peso':' pesos')];
   if (ratings.length){
@@ -3337,7 +3349,7 @@ function renderFlashcardOverlay(plan){
 
   const topBar = el('div','fc-top');
   const titleWrap = el('div');
-  titleWrap.appendChild(el('div','fc-name', entry.name || ('Código '+entry.code)));
+  titleWrap.appendChild(el('div','fc-name', entry.name ? wo2WithCode(entry.name, entry) : ('Código '+entry.code)));
   titleWrap.appendChild(el('div','fc-progress', (cardIdx+1)+' / '+totalCards));
   topBar.appendChild(titleWrap);
 
@@ -3841,7 +3853,7 @@ function renderAnalyticsScreen(){
     const top2 = el('div','ex-top');
     top2.appendChild(el('div','ex-code', code));
     const info = el('div','ex-info');
-    info.appendChild(el('div','ex-name', data.name || ('Código '+code)));
+    info.appendChild(el('div','ex-name', data.name ? data.name + ' (' + code + ')' : ('Código '+code)));
     const totalOk = data.points.reduce((a,p)=>a+p.ok,0);
     const totalBad = data.points.reduce((a,p)=>a+p.bad,0);
     const totalMarked = totalOk+totalBad;
@@ -4475,7 +4487,7 @@ function renderProfileScreen(){
     const top2 = el('div','ex-top');
     top2.appendChild(el('div','ex-code', code));
     const info = el('div','ex-info');
-    info.appendChild(el('div','ex-name', DICT[code] || ('Código '+code)));
+    info.appendChild(el('div','ex-name', DICT[code] ? DICT[code] + ' (' + code + ')' : ('Código '+code)));
     const latest = entries[entries.length-1];
     info.appendChild(el('div','ex-sub', 'RM actual: ' + latest.value + ' kg · ' + new Date(latest.date).toLocaleDateString('es-ES')));
     top2.appendChild(info);
