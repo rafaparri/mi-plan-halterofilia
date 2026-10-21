@@ -1090,6 +1090,34 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 </script>
+<script>
+// ===== Modo música: avisos solo con pitidos, sin voz =====
+let wo2MusicMode = false;
+try{ wo2MusicMode = localStorage.getItem('wo2_music_mode') === '1'; }catch(e){}
+function wo2ToggleMusic(){
+  wo2MusicMode = !wo2MusicMode;
+  try{ localStorage.setItem('wo2_music_mode', wo2MusicMode ? '1' : '0'); }catch(e){}
+  try{ if (navigator.audioSession) navigator.audioSession.type = 'ambient'; }catch(e){}
+  if (wo2MusicMode){ try{ if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){} }
+  render();
+}
+function wo2Beeps(n, freq, gap, dur){
+  for (let i = 0; i < n; i++) setTimeout(()=> playBeep(freq, dur), i * gap);
+}
+// Aviso del descanso: con voz (normal) o con pitidos (modo música)
+function wo2Cue(what){
+  if (restTimerMuted) return;
+  if (!wo2MusicMode){
+    const say = { end:'Descanso terminado', s30:'Treinta segundos', s10:'Diez segundos' }[what];
+    speakText(say || String(what));
+    return;
+  }
+  if (what === 'end') wo2Beeps(3, 1046, 260, 0.22);
+  else if (what === 's30') wo2Beeps(2, 660, 260, 0.16);
+  else if (what === 's10') wo2Beeps(3, 784, 220, 0.14);
+  else wo2Beeps(1, 880, 0, 0.12);   // 5, 4, 3, 2, 1
+}
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -3458,24 +3486,24 @@ function restTimerTick(){
     if (!restTimerMuted){
       try{ if (navigator.vibrate) navigator.vibrate([250,120,250,120,250]); }catch(e){}
       playHorn();
-      speakText('Descanso terminado');
+      wo2Cue('end');
     }
   } else if (remaining === 30 && !rt.thirtyBeeped){
     rt.thirtyBeeped = true;
-    playHorn();
-    if (!restTimerMuted) speakText('Treinta segundos');
+    if (!wo2MusicMode) playHorn();
+    wo2Cue('s30');
   } else if (remaining === 10 && !rt.tenBeeped){
     rt.tenBeeped = true;
-    playHorn();
-    if (!restTimerMuted) speakText('Diez segundos');
+    if (!wo2MusicMode) playHorn();
+    wo2Cue('s10');
   } else if (remaining === 5 && !rt.fiveBeeped){
     rt.fiveBeeped = true;
     rt.lastSpokenSecond = 5;
-    playHorn();
-    if (!restTimerMuted) speakText('5');
+    if (!wo2MusicMode) playHorn();
+    wo2Cue(5);
   } else if (remaining>=1 && remaining<=5 && rt.lastSpokenSecond !== remaining){
     rt.lastSpokenSecond = remaining;
-    if (!restTimerMuted) speakText(String(remaining));
+    wo2Cue(remaining);
   }
 
   // Actualización quirúrgica: solo se toca el número del cronómetro, nunca
@@ -3541,11 +3569,17 @@ function renderRestTimerBanner(){
   bar.appendChild(label);
 
   const btns = el('div');
-  btns.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  btns.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
   const muteBtn = el('button', null, restTimerMuted ? '🔇' : '🔊');
   muteBtn.style.cssText = 'background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;padding:10px 12px;border-radius:8px;cursor:pointer;';
   muteBtn.onclick = ()=> toggleRestTimerMute();
   btns.appendChild(muteBtn);
+  const musicBtn = el('button', null, wo2MusicMode ? '🎵 Música' : '🗣️ Voz');
+  musicBtn.title = wo2MusicMode ? 'Modo música: solo pitidos, no corta tu música' : 'Avisos con voz (en iPhone corta la música)';
+  musicBtn.setAttribute('aria-label', musicBtn.title);
+  musicBtn.style.cssText = muteBtn.style.cssText + 'font-size:15px;font-weight:700;';
+  musicBtn.onclick = ()=> wo2ToggleMusic();
+  btns.appendChild(musicBtn);
   if (wo2RecSupported()){
     const camBtn = el('button', null, '🎥');
     camBtn.title = 'Grabar la serie sin salir de la app';
