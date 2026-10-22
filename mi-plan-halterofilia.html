@@ -1094,8 +1094,7 @@ document.addEventListener('visibilitychange', ()=>{
 </script>
 <script>
 // ===== Modo música: avisos solo con pitidos, sin voz =====
-let wo2MusicMode = false;
-try{ wo2MusicMode = localStorage.getItem('wo2_music_mode') === '1'; }catch(e){}
+let wo2MusicMode = false;   // siempre voz grabada (el botón Voz/Música se quitó)
 function wo2ToggleMusic(){
   wo2MusicMode = !wo2MusicMode;
   try{ localStorage.setItem('wo2_music_mode', wo2MusicMode ? '1' : '0'); }catch(e){}
@@ -3617,12 +3616,6 @@ function renderRestTimerBanner(){
   muteBtn.style.cssText = 'background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;padding:10px 12px;border-radius:8px;cursor:pointer;';
   muteBtn.onclick = ()=> toggleRestTimerMute();
   btns.appendChild(muteBtn);
-  const musicBtn = el('button', null, wo2MusicMode ? '🎵 Música' : '🗣️ Voz');
-  musicBtn.title = wo2MusicMode ? 'Modo música: solo pitidos, no corta tu música' : 'Avisos con voz (en iPhone corta la música)';
-  musicBtn.setAttribute('aria-label', musicBtn.title);
-  musicBtn.style.cssText = muteBtn.style.cssText + 'font-size:15px;font-weight:700;';
-  musicBtn.onclick = ()=> wo2ToggleMusic();
-  btns.appendChild(musicBtn);
   if (wo2RecSupported()){
     const camBtn = el('button', null, '🎥');
     camBtn.title = 'Grabar la serie sin salir de la app';
