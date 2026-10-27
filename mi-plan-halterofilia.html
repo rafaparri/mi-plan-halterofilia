@@ -1800,6 +1800,9 @@ function wo2ComboText(scope){
   return vals.map(v=> v === '' ? '0' : v).join('+');
 }
 </script>
+<style>.fc-card .wo2-extimer.wo2-fctimer{ width:100%; margin:0 0 4px; }
+.fc-card .wo2-fctimer .wo2-exstart{ min-height:56px; font-size:19px; }
+.fc-card .wo2-fctimer .wo2-exrun, .fc-card .wo2-fctimer .wo2-exdone{ text-align:center; }</style>
 </head>
 <body>
 <div id="root"></div>
@@ -4449,6 +4452,8 @@ function renderFlashcardOverlay(plan){
       return overlay;
     }
 
+    wo2ExTimerRow(card, plan, day, exIdx);
+    if (card.lastChild && card.lastChild.classList && card.lastChild.classList.contains('wo2-extimer')) card.lastChild.classList.add('wo2-fctimer');
     card.appendChild(el('div','fc-kg', kgDisplayText(s)));
     if (s.optional){
       const optBadge = el('div', null, '🔓 Serie opcional (según cómo vayas)');
